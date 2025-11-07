@@ -1,0 +1,54 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: sla_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  nestjs-api:
+    build: ./nestjs-api
+    ports:
+      - "3000:3000"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=sla_service
+      - API_PORT=3000
+      - JWT_SECRET=your-secret-key
+      - HMAC_SECRET=your-hmac-secret
+    depends_on:
+      - postgres
+
+  nextjs-web:
+    build: ./nextjs-web
+    ports:
+      - "3001:3001"
+      - "9229:9229" # Debug port
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    # Debug configuration
+    command:
+      [
+        "node",
+        "--inspect=0.0.0.0:9229",
+        "node_modules/.bin/next",
+        "dev",
+        "-p",
+        "3001",
+      ]
+    volumes:
+      - ./nextjs-web:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  postgres_data:
