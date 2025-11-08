@@ -32,6 +32,9 @@ export class CreateWorkflowDto {
   // @ApiProperty({ description: "Odoo workflow ID", required: false })
   odooWorkflowId?: number;
 
+  // @ApiProperty({ description: "Workflow ID from Odoo", required: false })
+  workflowId?: number;
+
   // @ApiProperty({ description: "Create on creation", required: false, default: false })
   onCreate?: boolean;
 
@@ -206,29 +209,185 @@ export class WorkflowService {
     systemId: string,
     workflows: CreateWorkflowDto[]
   ): Promise<WorkflowEntity[]> {
-    // Remove existing workflows for this system
-    await this.removeBySystem(systemId);
+    // BREAKPOINT 10: Bắt đầu syncWorkflows service
+    debugger;
+    console.log(`🔄 [syncWorkflows] Starting sync for systemId: ${systemId}`);
+    console.log(
+      `🔄 [syncWorkflows] Total workflows to sync: ${workflows.length}`
+    );
 
-    // Create new workflows with activities
-    const createdWorkflows: WorkflowEntity[] = [];
-    for (const workflowData of workflows) {
+    // Sync workflows: update if exists, create if not
+    const syncedWorkflows: WorkflowEntity[] = [];
+
+    for (let i = 0; i < workflows.length; i++) {
+      const workflowData = workflows[i];
+      console.log(
+        `\n📦 [syncWorkflows] Processing workflow ${i + 1}/${workflows.length}:`
+      );
+      console.log(`   - workflowId: ${workflowData.workflowId}`);
+      console.log(`   - odooWorkflowId: ${workflowData.odooWorkflowId}`);
+      console.log(`   - workflowName: ${workflowData.workflowName}`);
+      console.log(`   - model: ${workflowData.model}`);
+      console.log(
+        `   - activities count: ${workflowData.activities?.length || 0}`
+      );
+
       // Ensure systemId and systemName are set
+      // Map workflowId to both workflowId and odooWorkflowId if needed
       const workflowWithSystemInfo = {
         ...workflowData,
         systemId: systemId,
         systemName: `System ${systemId}`, // TODO: Get actual system name from SystemEntity
+        // Map workflowId to odooWorkflowId if odooWorkflowId is not set
+        odooWorkflowId: workflowData.odooWorkflowId || workflowData.workflowId,
       };
-      const workflow = await this.create(workflowWithSystemInfo);
 
-      // Save activities to separate table if they exist
-      if (workflowData.activities && workflowData.activities.length > 0) {
-        await this.saveActivities(workflow.id, workflowData.activities);
+      // Find existing workflow by systemId + odooWorkflowId (from Odoo)
+      let existingWorkflow: WorkflowEntity | null = null;
+      if (workflowData.odooWorkflowId) {
+        // BREAKPOINT 11: Trước khi tìm workflow trong database
+        debugger;
+        console.log(
+          `   🔍 [syncWorkflows] Searching for existing workflow with odooWorkflowId: ${workflowData.odooWorkflowId}`
+        );
+        console.log(
+          `   📊 [DEBUG] workflowData:`,
+          JSON.stringify(workflowData, null, 2)
+        );
+        existingWorkflow = await this.workflowRepository.findOne({
+          where: {
+            systemId: systemId,
+            odooWorkflowId: workflowData.odooWorkflowId,
+          },
+        });
+        // BREAKPOINT 12: Sau khi tìm workflow - kiểm tra kết quả
+        debugger;
+        console.log(
+          `   📊 [DEBUG] existingWorkflow:`,
+          existingWorkflow ? `Found: ${existingWorkflow.id}` : "Not found"
+        );
+
+        if (existingWorkflow) {
+          console.log(
+            `   ✅ [syncWorkflows] Found existing workflow: id=${existingWorkflow.id}, name=${existingWorkflow.workflowName}`
+          );
+        } else {
+          console.log(
+            `   ❌ [syncWorkflows] No existing workflow found, will create new one`
+          );
+        }
+      } else {
+        console.log(
+          `   ⚠️  [syncWorkflows] No odooWorkflowId provided, will create new workflow`
+        );
       }
 
-      createdWorkflows.push(workflow);
+      let workflow: WorkflowEntity;
+
+      if (existingWorkflow) {
+        // Update existing workflow
+        // BREAKPOINT 13: Trước khi update workflow
+        debugger;
+        console.log(`   🔄 [syncWorkflows] Updating existing workflow...`);
+        console.log(`   📊 [DEBUG] existingWorkflow before update:`, {
+          id: existingWorkflow.id,
+          name: existingWorkflow.workflowName,
+          model: existingWorkflow.model,
+        });
+        // Extract activities before updating to avoid mapping issues
+        const { activities, ...updateData } = workflowWithSystemInfo;
+
+        Object.assign(existingWorkflow, updateData);
+        workflow = await this.workflowRepository.save(existingWorkflow);
+        // BREAKPOINT 14: Sau khi save workflow
+        debugger;
+        console.log(
+          `   ✅ [syncWorkflows] Workflow updated: id=${workflow.id}`
+        );
+        console.log(`   📊 [DEBUG] workflow after save:`, {
+          id: workflow.id,
+          name: workflow.workflowName,
+          model: workflow.model,
+        });
+
+        // Update activities: remove old ones and create new ones
+        if (workflowData.activities && workflowData.activities.length > 0) {
+          console.log(`   🗑️  [syncWorkflows] Deleting old activities...`);
+          const deleteResult = await this.activityRepository.delete({
+            workflowId: workflow.id,
+          });
+          console.log(
+            `   ✅ [syncWorkflows] Deleted ${
+              deleteResult.affected || 0
+            } activities`
+          );
+
+          console.log(
+            `   ➕ [syncWorkflows] Creating ${workflowData.activities.length} new activities...`
+          );
+          await this.saveActivities(workflow.id, workflowData.activities);
+          console.log(`   ✅ [syncWorkflows] Activities created successfully`);
+        }
+      } else {
+        // Create new workflow
+        // BREAKPOINT 15: Trước khi create workflow mới
+        debugger;
+        console.log(`   ➕ [syncWorkflows] Creating new workflow...`);
+        console.log(`   📊 [DEBUG] workflowWithSystemInfo:`, {
+          systemId: workflowWithSystemInfo.systemId,
+          workflowName: workflowWithSystemInfo.workflowName,
+          model: workflowWithSystemInfo.model,
+          odooWorkflowId: workflowWithSystemInfo.odooWorkflowId,
+        });
+        workflow = await this.create(workflowWithSystemInfo);
+        // BREAKPOINT 16: Sau khi create workflow
+        debugger;
+        console.log(
+          `   ✅ [syncWorkflows] Workflow created: id=${workflow.id}`
+        );
+        console.log(`   📊 [DEBUG] created workflow:`, {
+          id: workflow.id,
+          name: workflow.workflowName,
+          model: workflow.model,
+          systemId: workflow.systemId,
+        });
+
+        // Save activities to separate table if they exist
+        if (workflowData.activities && workflowData.activities.length > 0) {
+          console.log(
+            `   ➕ [syncWorkflows] Creating ${workflowData.activities.length} activities...`
+          );
+          await this.saveActivities(workflow.id, workflowData.activities);
+          console.log(`   ✅ [syncWorkflows] Activities created successfully`);
+        }
+      }
+
+      syncedWorkflows.push(workflow);
+      console.log(
+        `   ✅ [syncWorkflows] Workflow ${i + 1} processed successfully\n`
+      );
     }
 
-    return createdWorkflows;
+    console.log(
+      `\n📊 [syncWorkflows] Sync completed: ${syncedWorkflows.length} workflows processed`
+    );
+
+    // Update system counters after syncing all workflows
+    try {
+      console.log(
+        `🔄 [syncWorkflows] Updating system counters for systemId: ${systemId}`
+      );
+      await this.updateSystemCounters(systemId);
+      console.log(`✅ [syncWorkflows] System counters updated successfully`);
+    } catch (error) {
+      console.error(
+        `❌ [syncWorkflows] Could not update system counters for ${systemId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+
+    console.log(`✅ [syncWorkflows] Sync finished for systemId: ${systemId}\n`);
+    return syncedWorkflows;
   }
 
   private async saveActivities(

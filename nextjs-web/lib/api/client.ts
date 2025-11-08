@@ -28,7 +28,6 @@ class ApiClient {
         ...options,
       });
 
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -101,7 +100,7 @@ class ApiClient {
   }
 
   async updateSystem(id: string, system: any) {
-    return this.request<any>(`/systems/${id}`, {
+    return this.request<any>(`/api/systems/${id}`, {
       method: "PUT",
       body: JSON.stringify(system),
     });

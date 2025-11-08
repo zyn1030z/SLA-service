@@ -224,20 +224,11 @@ export function useSystemManagement() {
     updates: Partial<SystemConfig>
   ) => {
     try {
-      // Call API to update system in database
-      const response = await fetch(
-        `http://localhost:3000/systems/${systemId}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(updates),
-        }
-      );
-      console.log("🔄 response:", response);
+      // Call API to update system in database via apiClient
+      const response = await apiClient.updateSystem(systemId, updates);
+      console.log("🔄 updateSystem response:", response);
 
-      if (response.ok) {
+      if (response.success && response.data) {
         // Update local state only after successful API call
         const updatedSystems = systems.map((system) =>
           system.id === systemId ? { ...system, ...updates } : system
@@ -245,10 +236,13 @@ export function useSystemManagement() {
         setSystems(updatedSystems);
         localStorage.setItem("slaSystems", JSON.stringify(updatedSystems));
 
+        // Reload systems from database to ensure data consistency
+        await loadSystems();
+
         // Reload workflows to update systemName in workflow data
         await loadWorkflows();
       } else {
-        console.error("Failed to update system:", response.statusText);
+        console.error("Failed to update system:", response.error);
         alert("Lỗi khi lưu dữ liệu hệ thống. Vui lòng thử lại.");
       }
     } catch (error) {
@@ -458,11 +452,15 @@ export function useSystemManagement() {
       );
       console.log("systemWorkflows:", systemWorkflows);
 
+      // BREAKPOINT 6: Trước khi gọi NestJS API để sync workflows
+      debugger;
       // Update workflows for this system using API
       const syncResponse = await apiClient.syncWorkflows(
         systemId,
         systemWorkflows
       );
+      // BREAKPOINT 7: Sau khi nhận response từ NestJS
+      debugger;
 
       if (syncResponse.success && syncResponse.data) {
         const updatedWorkflows = workflows.filter(
@@ -636,7 +634,7 @@ export function useSystemManagement() {
       console.log("response testSystemConnection2:", response);
 
       const isConnected = response.ok;
-      updateSystem(systemId, {
+      await updateSystem(systemId, {
         status: isConnected ? "connected" : "error",
       });
 
@@ -721,8 +719,6 @@ export function useSystemManagement() {
             headers: system.apiConfig?.headers || {},
             requestBody: system.apiConfig?.requestBody || {
               access_token: system.apiKey || "",
-              model: "purchase.request",
-              res_id: 123,
             },
           }),
           signal: controller.signal,
@@ -797,9 +793,22 @@ export function useSystemManagement() {
 
         // Lưu xuống DB qua API backend
         try {
+          console.log("🔄 syncingWorkflows", mapped);
           const syncResponse = await apiClient.syncWorkflows(systemId, mapped);
           if (!syncResponse.success) {
             console.warn("Sync to backend failed, updating state only");
+          } else {
+            // Cập nhật trạng thái system thành "connected" nếu chưa kết nối
+            const currentSystem = systems.find((s) => s.id === systemId);
+            if (currentSystem && currentSystem.status !== "connected") {
+              console.log(
+                `🔄 Updating system ${systemId} status from "${currentSystem.status}" to "connected"`
+              );
+              await updateSystem(systemId, {
+                status: "connected",
+                lastSync: new Date(),
+              });
+            }
           }
         } catch (e) {
           console.warn("Sync to backend errored, updating state only");

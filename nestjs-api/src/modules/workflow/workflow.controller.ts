@@ -64,10 +64,18 @@ export class WorkflowController {
     @Param("systemId") systemId: string,
     @Body() body: { workflows?: any[] }
   ) {
+    // BREAKPOINT 8: NestJS Controller nhận request từ frontend
+    debugger;
+    console.log(`🔵 [Controller] syncWorkflows called for systemId: ${systemId}`);
+    console.log(`🔵 [Controller] workflows count: ${body.workflows?.length || 0}`);
+    
     const workflows = await this.workflowService.syncWorkflows(
       systemId,
       body.workflows || []
     );
+    
+    // BREAKPOINT 9: Sau khi sync xong, trả về response
+    debugger;
     return {
       success: true,
       workflowsCount: workflows.length,

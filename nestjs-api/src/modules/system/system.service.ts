@@ -150,6 +150,12 @@ export class SystemService {
     if (updateSystemDto.apiRequestBody !== undefined) {
       system.apiRequestBody = updateSystemDto.apiRequestBody;
     }
+    if (updateSystemDto.status !== undefined) {
+      system.status = updateSystemDto.status;
+    }
+    if (updateSystemDto.lastSync !== undefined) {
+      system.lastSync = updateSystemDto.lastSync;
+    }
 
     const updatedSystem = await this.systemRepository.save(system);
 

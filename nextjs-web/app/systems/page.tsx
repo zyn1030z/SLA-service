@@ -79,11 +79,16 @@ export default function SystemsPage() {
     testSystemConnection,
     getSystemStats,
     getWorkflowsBySystem,
+    loadSystems,
   } = useSystemManagement();
 
   // Wrapper for syncSystem that calls proxy with system api config (like testSystemConnection)
   const syncSystem = async (systemId: string) => {
+    // BREAKPOINT 4: Bắt đầu syncSystem function
+    // debugger;
+
     const system = localSystems.find((s) => s.id === systemId);
+    console.log("system", system);
     if (!system) {
       return {
         systemId,
@@ -107,6 +112,8 @@ export default function SystemsPage() {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
+      // BREAKPOINT 5: Trước khi gọi proxy-odoo
+      // debugger;
       const apiUrl = `${system.baseUrl}${
         system.apiConfig?.workflowEndpoint ||
         "/api/v2/tcm/workflow/get_workflow_steps"
@@ -166,54 +173,36 @@ export default function SystemsPage() {
     }
   };
 
-  // Function to load systems from API (reusable)
-  const loadSystems = async () => {
-    try {
-      console.log("🔄 Loading systems from /api/systems...");
-      const response = await fetch("/api/systems");
-      const data = await response.json();
-      console.log("📦 Response data:", data);
-      
-      if (data.success && data.data && Array.isArray(data.data)) {
-        console.log(`✅ Found ${data.data.length} systems in response`);
-        // Map systems to local format với đầy đủ apiConfig
-        const mappedSystems = data.data.map((system: any) => ({
-          ...system,
-          name: system.systemName,
-          status: system.status || "disconnected",
-          workflowsCount: system.workflowsCount || 0,
-          violationsCount: system.violationsCount || 0,
-          lastSync: system.lastSync || null,
-          // Map apiConfig để đảm bảo có đầy đủ config
-          apiConfig: system.apiConfig || {
-            workflowEndpoint: system.workflowEndpoint || "",
-            method: system.apiMethod || "POST",
-            headers: system.apiHeaders || {},
-            requestBody: system.apiRequestBody || {},
-          },
-          // Giữ lại các field cũ để tương thích
-          workflowEndpoint: system.workflowEndpoint || "",
-          apiMethod: system.apiMethod || "POST",
-          apiHeaders: system.apiHeaders || {},
-          apiRequestBody: system.apiRequestBody || {},
-        }));
-        console.log("📋 Mapped systems:", mappedSystems);
-        setLocalSystems(mappedSystems);
-      } else {
-        console.warn("⚠️ No systems found or invalid response format");
-        console.log("Response structure:", { success: data.success, hasData: !!data.data, isArray: Array.isArray(data.data) });
-        setLocalSystems([]);
-      }
-    } catch (err) {
-      console.error("🧪 Error loading systems:", err);
-      setLocalSystems([]);
-    }
-  };
-
-  // Load systems from API on mount
+  // Đồng bộ localSystems với systems từ hook
   useEffect(() => {
-    loadSystems();
-  }, []); // Chỉ chạy 1 lần khi component mount
+    const mappedSystems = systems.map((system) => ({
+      ...system,
+      name: (system as any).systemName || system.name,
+      status: system.status || "disconnected",
+      workflowsCount: system.workflowsCount || 0,
+      violationsCount: system.violationsCount || 0,
+      lastSync: system.lastSync || null,
+      color: system.color || "#3B82F6",
+      icon: system.icon || "🏢",
+      apiConfig: system.apiConfig || {
+        workflowEndpoint: (system as any).workflowEndpoint || "",
+        method: (system as any).apiMethod || "POST",
+        headers: (system as any).apiHeaders || {},
+        requestBody: (system as any).apiRequestBody || {},
+      },
+      workflowEndpoint:
+        system.apiConfig?.workflowEndpoint ||
+        (system as any).workflowEndpoint ||
+        "",
+      apiMethod:
+        system.apiConfig?.method || (system as any).apiMethod || "POST",
+      apiHeaders: system.apiConfig?.headers || (system as any).apiHeaders || {},
+      apiRequestBody:
+        system.apiConfig?.requestBody || (system as any).apiRequestBody || {},
+    }));
+
+    setLocalSystems(mappedSystems);
+  }, [systems]);
 
   // Hook functions available
   const [showAlert, setShowAlert] = useState(false);
@@ -300,6 +289,9 @@ export default function SystemsPage() {
   };
 
   const handleSyncSystem = async (systemId: string) => {
+    // BREAKPOINT 1: Bắt đầu sync từ button
+    // debugger; // Đặt breakpoint ở đây để debug từ frontend
+
     // Find the system in localSystems
     const system = localSystems.find((s) => s.id === systemId);
 
@@ -314,11 +306,15 @@ export default function SystemsPage() {
       return;
     }
 
+    // BREAKPOINT 2: Trước khi gọi syncSystem
+    // debugger;
     const result = await syncSystem(systemId);
 
-    // Lấy danh sách workflows vừa được đồng bộ
+    // BREAKPOINT 3: Sau khi sync xong
     // debugger;
+    // Lấy danh sách workflows vừa được đồng bộ
     const syncedWorkflows = getWorkflowsBySystem(systemId);
+    console.log("🔄 result", result);
     console.log("🔄 Synced workflows:", syncedWorkflows, systemId);
 
     setAlertData({
@@ -334,6 +330,23 @@ export default function SystemsPage() {
 
   const handleTestConnection = async (systemId: string) => {
     const isConnected = await testSystemConnection(systemId);
+    // Cập nhật trạng thái ngay lập tức để phản hồi UI
+    setLocalSystems((prev) =>
+      prev.map((system) =>
+        system.id === systemId
+          ? {
+              ...system,
+              status: isConnected ? "connected" : "error",
+              lastSync: isConnected
+                ? new Date().toISOString()
+                : system.lastSync,
+            }
+          : system
+      )
+    );
+    // Đồng bộ lại danh sách từ backend để đảm bảo dữ liệu chính xác
+    await loadSystems();
+
     setAlertData({
       title: isConnected ? "Kết nối thành công" : "Lỗi kết nối",
       description: isConnected
@@ -631,9 +644,15 @@ export default function SystemsPage() {
                         checked={system.enabled}
                         onChange={async (e) => {
                           try {
-                            await updateSystem(system.id, {
-                              enabled: e.target.checked,
-                            });
+                            const isEnabled = e.target.checked;
+                            // Chỉ cập nhật status khi tắt checkbox
+                            const updates: any = {
+                              enabled: isEnabled,
+                            };
+                            if (!isEnabled) {
+                              updates.status = "disconnected";
+                            }
+                            await updateSystem(system.id, updates);
                             // Reload systems from API to get updated data
                             await loadSystems();
                           } catch (error) {

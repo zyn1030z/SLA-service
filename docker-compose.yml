@@ -27,10 +27,11 @@ services:
         condition: service_healthy
     ports:
       - "${API_PORT}:3000"
+      - "9229:9229" # Debug port
     volumes:
       - ./nestjs-api:/app
       - /app/node_modules
-    command: sh -c "npm run start:dev"
+    command: sh -c "npm run start:debug"
 
   nextjs-web:
     build: ./nextjs-web
