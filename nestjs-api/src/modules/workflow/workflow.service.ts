@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, In } from "typeorm";
 import { WorkflowEntity } from "../../entities/workflow.entity";
 import { ActivityEntity } from "../../entities/activity.entity";
 import { TransitionEntity } from "../../entities/transition.entity";
@@ -129,8 +129,34 @@ export class WorkflowService {
     // Extract activities before creating workflow to avoid mapping issues
     const { activities, ...workflowData } = createWorkflowDto;
 
+    // BREAKPOINT: Trước khi tạo workflow entity
+    debugger;
+    console.log(`🔵 [create] Creating workflow with data:`, {
+      systemId: workflowData.systemId,
+      workflowName: workflowData.workflowName,
+      model: workflowData.model,
+      odooWorkflowId: workflowData.odooWorkflowId,
+    });
+
     const workflow = this.workflowRepository.create(workflowData);
+
+    // BREAKPOINT: Trước khi lưu xuống database - ĐÂY LÀ ĐIỂM QUAN TRỌNG
+    debugger;
+    console.log(`💾 [create] About to save workflow to database:`, {
+      id: workflow.id,
+      workflowName: workflow.workflowName,
+      systemId: workflow.systemId,
+    });
+
     const savedWorkflow = await this.workflowRepository.save(workflow);
+
+    // BREAKPOINT: Sau khi lưu xuống database thành công
+    debugger;
+    console.log(`✅ [create] Workflow saved successfully:`, {
+      id: savedWorkflow.id,
+      workflowName: savedWorkflow.workflowName,
+      createdAt: savedWorkflow.createdAt,
+    });
 
     // Update system counters (only if system exists)
     try {
@@ -221,16 +247,6 @@ export class WorkflowService {
 
     for (let i = 0; i < workflows.length; i++) {
       const workflowData = workflows[i];
-      console.log(
-        `\n📦 [syncWorkflows] Processing workflow ${i + 1}/${workflows.length}:`
-      );
-      console.log(`   - workflowId: ${workflowData.workflowId}`);
-      console.log(`   - odooWorkflowId: ${workflowData.odooWorkflowId}`);
-      console.log(`   - workflowName: ${workflowData.workflowName}`);
-      console.log(`   - model: ${workflowData.model}`);
-      console.log(
-        `   - activities count: ${workflowData.activities?.length || 0}`
-      );
 
       // Ensure systemId and systemName are set
       // Map workflowId to both workflowId and odooWorkflowId if needed
@@ -239,157 +255,152 @@ export class WorkflowService {
         systemId: systemId,
         systemName: `System ${systemId}`, // TODO: Get actual system name from SystemEntity
         // Map workflowId to odooWorkflowId if odooWorkflowId is not set
-        odooWorkflowId: workflowData.odooWorkflowId || workflowData.workflowId,
+        odooWorkflowId: workflowData.workflowId,
       };
 
       // Find existing workflow by systemId + odooWorkflowId (from Odoo)
       let existingWorkflow: WorkflowEntity | null = null;
-      if (workflowData.odooWorkflowId) {
-        // BREAKPOINT 11: Trước khi tìm workflow trong database
-        debugger;
-        console.log(
-          `   🔍 [syncWorkflows] Searching for existing workflow with odooWorkflowId: ${workflowData.odooWorkflowId}`
-        );
-        console.log(
-          `   📊 [DEBUG] workflowData:`,
-          JSON.stringify(workflowData, null, 2)
-        );
+      if (workflowData.workflowId) {
         existingWorkflow = await this.workflowRepository.findOne({
           where: {
             systemId: systemId,
-            odooWorkflowId: workflowData.odooWorkflowId,
+            odooWorkflowId: workflowData.workflowId,
           },
         });
-        // BREAKPOINT 12: Sau khi tìm workflow - kiểm tra kết quả
-        debugger;
-        console.log(
-          `   📊 [DEBUG] existingWorkflow:`,
-          existingWorkflow ? `Found: ${existingWorkflow.id}` : "Not found"
-        );
-
-        if (existingWorkflow) {
-          console.log(
-            `   ✅ [syncWorkflows] Found existing workflow: id=${existingWorkflow.id}, name=${existingWorkflow.workflowName}`
-          );
-        } else {
-          console.log(
-            `   ❌ [syncWorkflows] No existing workflow found, will create new one`
-          );
-        }
-      } else {
-        console.log(
-          `   ⚠️  [syncWorkflows] No odooWorkflowId provided, will create new workflow`
-        );
       }
 
       let workflow: WorkflowEntity;
-
       if (existingWorkflow) {
-        // Update existing workflow
-        // BREAKPOINT 13: Trước khi update workflow
-        debugger;
-        console.log(`   🔄 [syncWorkflows] Updating existing workflow...`);
-        console.log(`   📊 [DEBUG] existingWorkflow before update:`, {
-          id: existingWorkflow.id,
-          name: existingWorkflow.workflowName,
-          model: existingWorkflow.model,
-        });
-        // Extract activities before updating to avoid mapping issues
         const { activities, ...updateData } = workflowWithSystemInfo;
-
         Object.assign(existingWorkflow, updateData);
         workflow = await this.workflowRepository.save(existingWorkflow);
-        // BREAKPOINT 14: Sau khi save workflow
-        debugger;
-        console.log(
-          `   ✅ [syncWorkflows] Workflow updated: id=${workflow.id}`
-        );
-        console.log(`   📊 [DEBUG] workflow after save:`, {
-          id: workflow.id,
-          name: workflow.workflowName,
-          model: workflow.model,
-        });
-
-        // Update activities: remove old ones and create new ones
         if (workflowData.activities && workflowData.activities.length > 0) {
-          console.log(`   🗑️  [syncWorkflows] Deleting old activities...`);
-          const deleteResult = await this.activityRepository.delete({
-            workflowId: workflow.id,
-          });
-          console.log(
-            `   ✅ [syncWorkflows] Deleted ${
-              deleteResult.affected || 0
-            } activities`
+          await this.updateOrCreateActivities(
+            workflow.id,
+            workflowData.activities
           );
-
-          console.log(
-            `   ➕ [syncWorkflows] Creating ${workflowData.activities.length} new activities...`
-          );
-          await this.saveActivities(workflow.id, workflowData.activities);
-          console.log(`   ✅ [syncWorkflows] Activities created successfully`);
         }
       } else {
-        // Create new workflow
-        // BREAKPOINT 15: Trước khi create workflow mới
-        debugger;
-        console.log(`   ➕ [syncWorkflows] Creating new workflow...`);
-        console.log(`   📊 [DEBUG] workflowWithSystemInfo:`, {
-          systemId: workflowWithSystemInfo.systemId,
-          workflowName: workflowWithSystemInfo.workflowName,
-          model: workflowWithSystemInfo.model,
-          odooWorkflowId: workflowWithSystemInfo.odooWorkflowId,
-        });
         workflow = await this.create(workflowWithSystemInfo);
-        // BREAKPOINT 16: Sau khi create workflow
-        debugger;
-        console.log(
-          `   ✅ [syncWorkflows] Workflow created: id=${workflow.id}`
-        );
-        console.log(`   📊 [DEBUG] created workflow:`, {
-          id: workflow.id,
-          name: workflow.workflowName,
-          model: workflow.model,
-          systemId: workflow.systemId,
-        });
-
-        // Save activities to separate table if they exist
         if (workflowData.activities && workflowData.activities.length > 0) {
-          console.log(
-            `   ➕ [syncWorkflows] Creating ${workflowData.activities.length} activities...`
-          );
           await this.saveActivities(workflow.id, workflowData.activities);
-          console.log(`   ✅ [syncWorkflows] Activities created successfully`);
         }
       }
-
       syncedWorkflows.push(workflow);
-      console.log(
-        `   ✅ [syncWorkflows] Workflow ${i + 1} processed successfully\n`
-      );
     }
-
-    console.log(
-      `\n📊 [syncWorkflows] Sync completed: ${syncedWorkflows.length} workflows processed`
-    );
 
     // Update system counters after syncing all workflows
-    try {
-      console.log(
-        `🔄 [syncWorkflows] Updating system counters for systemId: ${systemId}`
-      );
-      await this.updateSystemCounters(systemId);
-      console.log(`✅ [syncWorkflows] System counters updated successfully`);
-    } catch (error) {
-      console.error(
-        `❌ [syncWorkflows] Could not update system counters for ${systemId}:`,
-        error instanceof Error ? error.message : String(error)
-      );
-    }
+    // try {
+    //   await this.updateSystemCounters(systemId);
+    // } catch (error) {
+    //   console.error(
+    //     `❌ [syncWorkflows] Could not update system counters for ${systemId}:`,
+    //     error instanceof Error ? error.message : String(error)
+    //   );
+    // }
 
-    console.log(`✅ [syncWorkflows] Sync finished for systemId: ${systemId}\n`);
     return syncedWorkflows;
   }
 
+  /**
+   * Update existing activities or create new ones
+   * Only deletes activities that are no longer in the new list
+   */
+  private async updateOrCreateActivities(
+    workflowId: string,
+    activities: any[]
+  ): Promise<void> {
+    // Get list of activityIds from new data
+    const newActivityIds = activities
+      .map((a) => a.id)
+      .filter((id) => id != null);
+
+    // Find existing activities for this workflow
+    const existingActivities = await this.activityRepository.find({
+      where: { workflowId },
+    });
+
+    // Create a map of existing activities by activityId for quick lookup
+    const existingActivitiesMap = new Map<number, ActivityEntity>();
+    existingActivities.forEach((activity) => {
+      existingActivitiesMap.set(activity.activityId, activity);
+    });
+
+    // Process each activity from new data
+    for (const activityData of activities) {
+      const activityId = activityData.id;
+      if (!activityId) {
+        console.warn(`⚠️ Activity without id skipped:`, activityData);
+        continue;
+      }
+
+      const existingActivity = existingActivitiesMap.get(activityId);
+
+      // Prepare activity data
+      const activityUpdateData = {
+        workflowId,
+        activityId: activityData.id,
+        name: activityData.name,
+        code: activityData.code || null,
+        kind: activityData.kind,
+        splitMode: activityData.split_mode,
+        joinMode: activityData.join_mode,
+        flowStart: activityData.flow_start || false,
+        flowStop: activityData.flow_stop || false,
+        flowCancel: activityData.flow_cancel || false,
+        flowDone: activityData.flow_done || false,
+        action: activityData.action || null,
+        note: activityData.note || null,
+      };
+
+      let savedActivity: ActivityEntity;
+
+      if (existingActivity) {
+        // Update existing activity - preserve frontend-specific fields
+        Object.assign(existingActivity, activityUpdateData);
+        // Keep existing frontend-specific values if they exist
+        // (violationAction, slaHours, maxViolations, isActive)
+        savedActivity = await this.activityRepository.save(existingActivity);
+      } else {
+        // Create new activity with defaults for frontend-specific fields
+        const newActivity = this.activityRepository.create({
+          ...activityUpdateData,
+          violationAction: "notify" as const,
+          slaHours: 24,
+          maxViolations: 3,
+          isActive: true,
+        });
+        savedActivity = await this.activityRepository.save(newActivity);
+      }
+
+      // Update transitions for this activity
+      if (activityData.transitions && activityData.transitions.length > 0) {
+        // Delete old transitions first
+        await this.transitionRepository.delete({
+          activityId: savedActivity.id,
+        });
+        // Create new transitions
+        await this.saveTransitions(savedActivity.id, activityData.transitions);
+      }
+    }
+
+    // Delete activities that are no longer in the new list
+    const activitiesToDelete = existingActivities.filter(
+      (activity) => !newActivityIds.includes(activity.activityId)
+    );
+
+    if (activitiesToDelete.length > 0) {
+      const idsToDelete = activitiesToDelete.map((a) => a.id);
+      await this.activityRepository.delete({
+        id: In(idsToDelete),
+      });
+    }
+  }
+
+  /**
+   * Save activities (legacy method - creates new activities only)
+   * Used for new workflows
+   */
   private async saveActivities(
     workflowId: string,
     activities: any[]
