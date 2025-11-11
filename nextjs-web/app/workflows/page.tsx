@@ -78,13 +78,25 @@ export default function WorkflowsPage() {
 
   const stats = getSystemStats();
 
-  // Sử dụng useMemo để cache filtered workflows và tránh re-render vô hạn
-  const filteredWorkflows = useMemo(() => {
+  // // Sử dụng useMemo để cache filtered workflows và tránh re-render vô hạn
+  // const filteredWorkflows = useMemo(() => {
+  //   if (selectedSystem === "all") {
+  //     return workflows;
+  //   }
+  //   // Chỉ filter từ workflows hiện có, không trigger async fetch trong render
+  //   return workflows.filter((w) => w.systemId === selectedSystem);
+  // }, [selectedSystem, workflows]);
+
+  // Sử dụng useEffect để set state filteredWorkflows
+  const [filteredWorkflows, setFilteredWorkflows] = useState(workflows);
+  useEffect(() => {
     if (selectedSystem === "all") {
-      return workflows;
+      setFilteredWorkflows(workflows);
+    } else {
+      setFilteredWorkflows(
+        workflows.filter((w) => w.systemId === selectedSystem)
+      );
     }
-    // Chỉ filter từ workflows hiện có, không trigger async fetch trong render
-    return workflows.filter((w) => w.systemId === selectedSystem);
   }, [selectedSystem, workflows]);
 
   const handleSyncSystem = async (systemId: string) => {

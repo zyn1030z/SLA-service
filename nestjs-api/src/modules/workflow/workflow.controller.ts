@@ -6,6 +6,7 @@ import {
   Put,
   Delete,
   Param,
+  ForbiddenException,
 } from "@nestjs/common";
 import { Public } from "../auth/public.decorator";
 import {
@@ -39,7 +40,10 @@ export class WorkflowController {
   @Public()
   @Post()
   async createWorkflow(@Body() createWorkflowDto: CreateWorkflowDto) {
-    return this.workflowService.create(createWorkflowDto);
+    // Tạm thời chặn tạo mới workflow ngoài luồng sync
+    throw new ForbiddenException(
+      "Workflow creation is disabled temporarily. Please use sync endpoint."
+    );
   }
 
   @Public()
@@ -64,18 +68,10 @@ export class WorkflowController {
     @Param("systemId") systemId: string,
     @Body() body: { workflows?: any[] }
   ) {
-    // BREAKPOINT 8: NestJS Controller nhận request từ frontend
-    debugger;
-    console.log(`🔵 [Controller] syncWorkflows called for systemId: ${systemId}`);
-    console.log(`🔵 [Controller] workflows count: ${body.workflows?.length || 0}`);
-    
     const workflows = await this.workflowService.syncWorkflows(
       systemId,
       body.workflows || []
     );
-    
-    // BREAKPOINT 9: Sau khi sync xong, trả về response
-    debugger;
     return {
       success: true,
       workflowsCount: workflows.length,
@@ -96,5 +92,12 @@ export class WorkflowController {
     }
   ) {
     return this.workflowService.updateActivity(activityId, updateData);
+  }
+
+  @Public()
+  @Delete("activity/:activityId")
+  async deleteActivity(@Param("activityId") activityId: string) {
+    const success = await this.workflowService.deleteActivity(activityId);
+    return { success };
   }
 }

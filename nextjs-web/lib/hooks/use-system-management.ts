@@ -815,10 +815,10 @@ export function useSystemManagement() {
         }
 
         // Cập nhật state workflows cục bộ: thay các workflow của systemId
-        setWorkflows((prev) => {
-          const without = prev.filter((w) => w.systemId !== systemId);
-          return [...without, ...mapped];
-        });
+        // setWorkflows((prev) => {
+        //   const without = prev.filter((w) => w.systemId !== systemId);
+        //   return [...without, ...mapped];
+        // });
       } catch (err) {
         console.error("Failed to fetch workflows by system:", err);
       } finally {

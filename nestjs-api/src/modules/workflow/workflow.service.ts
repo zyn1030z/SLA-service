@@ -106,9 +106,14 @@ export class WorkflowService {
   ) {}
 
   async findAll(): Promise<WorkflowEntity[]> {
-    return this.workflowRepository.find({
+    const results = await this.workflowRepository.find({
       order: { createdAt: "DESC" },
     });
+    console.log("[WorkflowService.findAll] Returned workflows:", {
+      count: results.length,
+      ids: results.map((w) => w.id),
+    });
+    return results;
   }
 
   async findBySystem(systemId: string): Promise<WorkflowEntity[]> {
@@ -269,9 +274,20 @@ export class WorkflowService {
         });
       }
 
+      // Fallback: nếu không tìm thấy theo odooWorkflowId, thử khớp theo systemId + model
+      if (!existingWorkflow) {
+        existingWorkflow = await this.workflowRepository.findOne({
+          where: {
+            systemId: systemId,
+            model: workflowData.model,
+          },
+        });
+      }
+
       let workflow: WorkflowEntity;
       if (existingWorkflow) {
-        const { activities, ...updateData } = workflowWithSystemInfo;
+        const { activities, ...updateData } = workflowWithSystemInfo as any;
+        delete updateData.id;
         Object.assign(existingWorkflow, updateData);
         workflow = await this.workflowRepository.save(existingWorkflow);
         if (workflowData.activities && workflowData.activities.length > 0) {
@@ -290,14 +306,14 @@ export class WorkflowService {
     }
 
     // Update system counters after syncing all workflows
-    // try {
-    //   await this.updateSystemCounters(systemId);
-    // } catch (error) {
-    //   console.error(
-    //     `❌ [syncWorkflows] Could not update system counters for ${systemId}:`,
-    //     error instanceof Error ? error.message : String(error)
-    //   );
-    // }
+    try {
+      await this.updateSystemCounters(systemId);
+    } catch (error) {
+      console.error(
+        `❌ [syncWorkflows] Could not update system counters for ${systemId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
 
     return syncedWorkflows;
   }
@@ -511,5 +527,32 @@ export class WorkflowService {
     }
 
     return this.activityRepository.save(activity);
+  }
+
+  async deleteActivity(activityId: string): Promise<boolean> {
+    const activity = await this.activityRepository.findOne({
+      where: { id: activityId },
+    });
+    if (!activity) {
+      return false;
+    }
+    // Delete related transitions first
+    await this.transitionRepository.delete({ activityId: activity.id });
+    // Delete the activity
+    await this.activityRepository.delete({ id: activity.id });
+    // Recalculate steps for the parent workflow
+    if (activity.workflowId) {
+      const remainingActivitiesCount = await this.activityRepository.count({
+        where: { workflowId: activity.workflowId },
+      });
+      const parentWorkflow = await this.workflowRepository.findOne({
+        where: { id: activity.workflowId },
+      });
+      if (parentWorkflow) {
+        parentWorkflow.steps = remainingActivitiesCount;
+        await this.workflowRepository.save(parentWorkflow);
+      }
+    }
+    return true;
   }
 }
