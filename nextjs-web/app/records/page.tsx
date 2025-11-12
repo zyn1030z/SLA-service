@@ -33,62 +33,40 @@ export default function RecordsPage() {
   const { t } = useTranslation();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    // Mock data for now - replace with actual API call
-    setTimeout(() => {
-      setRecords([
-        {
-          id: "1",
-          recordId: "PO-12345",
-          model: "purchase.order",
-          workflowName: "Purchase Order Approval",
-          stepCode: "manager_approval",
-          stepName: "Manager Approval",
-          startTime: "2025-10-20T08:00:00Z",
-          status: "waiting",
-          violationCount: 0,
-          slaHours: 24,
-          remainingHours: 18,
-        },
-        {
-          id: "2",
-          recordId: "EXP-67890",
-          model: "hr.expense",
-          workflowName: "Expense Report",
-          stepCode: "supervisor_approval",
-          stepName: "Supervisor Approval",
-          startTime: "2025-10-19T14:30:00Z",
-          status: "violated",
-          violationCount: 2,
-          slaHours: 12,
-          remainingHours: -3,
-        },
-        {
-          id: "3",
-          recordId: "PO-54321",
-          model: "purchase.order",
-          workflowName: "Purchase Order Approval",
-          stepCode: "finance_review",
-          stepName: "Finance Review",
-          startTime: "2025-10-20T10:15:00Z",
-          status: "completed",
-          violationCount: 0,
-          slaHours: 48,
-          remainingHours: 0,
-        },
-      ]);
-      setLoading(false);
-    }, 1000);
-  }, []);
+  const loadRecords = async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (searchTerm) params.set("search", searchTerm);
+    const res = await fetch(`/api/records?${params.toString()}`);
+    const data = await res.json();
+    setRecords(data.items || []);
+    setTotal(data.total || 0);
+    setLoading(false);
+  };
 
-  const filteredRecords = records.filter(
-    (record) =>
-      record.recordId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.workflowName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.stepName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    loadRecords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, statusFilter]);
+
+  const filteredRecords = records.filter((record) => {
+    if (!searchTerm) return true;
+    const s = searchTerm.toLowerCase();
+    return (
+      record.recordId?.toLowerCase().includes(s) ||
+      record.workflowName?.toLowerCase().includes(s) ||
+      record.stepName?.toLowerCase().includes(s)
+    );
+  });
 
   const getStatusBadge = (status: string, violationCount: number) => {
     if (status === "completed") {
@@ -160,7 +138,15 @@ export default function RecordsPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="all" className="space-y-4">
+      <Tabs
+        defaultValue="all"
+        value={statusFilter}
+        onValueChange={(v) => {
+          setStatusFilter(v);
+          setPage(1);
+        }}
+        className="space-y-4"
+      >
         <TabsList>
           <TabsTrigger value="all">{t("records.allRecords")}</TabsTrigger>
           <TabsTrigger value="waiting">{t("records.waiting")}</TabsTrigger>
@@ -296,6 +282,37 @@ export default function RecordsPage() {
               </Table>
             </CardContent>
           </Card>
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              {total > 0
+                ? `Hiển thị ${(page - 1) * pageSize + 1}-${Math.min(
+                    page * pageSize,
+                    total
+                  )} / ${total}`
+                : "Không có bản ghi"}
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                Trang trước
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPage((p) => (p * pageSize < total ? p + 1 : p))
+                }
+                disabled={page * pageSize >= total}
+              >
+                Trang sau
+              </Button>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="waiting">

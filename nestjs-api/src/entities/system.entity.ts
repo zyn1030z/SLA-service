@@ -8,8 +8,8 @@ import {
 
 @Entity("systems")
 export class SystemEntity {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id!: number;
 
   @Column({ name: "system_name" })
   systemName!: string;

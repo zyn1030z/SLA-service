@@ -15,11 +15,11 @@ import { TransitionEntity } from "./transition.entity";
 @Entity("activities")
 @Index(["workflowId", "id"])
 export class ActivityEntity {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id!: number;
 
-  @Column({ name: "workflow_id", type: "uuid" })
-  workflowId!: string;
+  @Column({ name: "workflow_id", type: "int" })
+  workflowId!: number;
 
   @Column({ name: "activity_id", type: "int" })
   activityId!: number;

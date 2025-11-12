@@ -9,6 +9,7 @@ import { SchedulerModule } from "./modules/scheduler/scheduler.module";
 import { NotificationModule } from "./modules/notification/notification.module";
 import { OdooIntegrationModule } from "./modules/odoo/odoo-integration.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { RecordModule } from "./modules/record/record.module";
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { AuthModule } from "./modules/auth/auth.module";
         password: process.env.POSTGRES_PASSWORD,
         database: process.env.POSTGRES_DB,
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: false,
       }),
     }),
     ScheduleModule.forRoot(),
@@ -33,6 +34,7 @@ import { AuthModule } from "./modules/auth/auth.module";
     NotificationModule,
     OdooIntegrationModule,
     AuthModule,
+    RecordModule,
   ],
 })
 export class AppModule {}

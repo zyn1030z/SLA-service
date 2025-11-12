@@ -9,7 +9,7 @@ import { SystemEntity } from "../../entities/system.entity";
 
 export class CreateWorkflowDto {
   // @ApiProperty({ description: "System ID" })
-  systemId!: string;
+  systemId!: number;
 
   // @ApiProperty({ description: "System name" })
   systemName!: string;
@@ -105,9 +105,9 @@ export class WorkflowService {
     private systemRepository: Repository<SystemEntity>
   ) {}
 
-  private async resolveSystemName(systemId: string): Promise<string> {
+  private async resolveSystemName(systemId: string | number): Promise<string> {
     const system = await this.systemRepository.findOne({
-      where: { id: systemId },
+      where: { id: Number(systemId) },
     });
     return system?.systemName || `System ${systemId}`;
   }
@@ -123,16 +123,16 @@ export class WorkflowService {
     return results;
   }
 
-  async findBySystem(systemId: string): Promise<WorkflowEntity[]> {
+  async findBySystem(systemId: string | number): Promise<WorkflowEntity[]> {
     return this.workflowRepository.find({
-      where: { systemId },
+      where: { systemId: Number(systemId) },
       order: { createdAt: "DESC" },
     });
   }
 
-  async findOne(id: string): Promise<WorkflowEntity | null> {
+  async findOne(id: string | number): Promise<WorkflowEntity | null> {
     return this.workflowRepository.findOne({
-      where: { id },
+      where: { id: Number(id) },
       relations: ["activities", "activities.transitions"],
     });
   }
@@ -148,6 +148,11 @@ export class WorkflowService {
       );
     }
 
+    // Defensive: never accept external id when creating new workflow
+    if ((workflowData as any).id !== undefined) {
+      delete (workflowData as any).id;
+    }
+
     // BREAKPOINT: Trước khi tạo workflow entity
     debugger;
     console.log(`🔵 [create] Creating workflow with data:`, {
@@ -157,7 +162,10 @@ export class WorkflowService {
       odooWorkflowId: workflowData.odooWorkflowId,
     });
 
-    const workflow = this.workflowRepository.create(workflowData);
+    const workflow = this.workflowRepository.create({
+      ...workflowData,
+      systemId: Number(workflowData.systemId),
+    });
 
     // BREAKPOINT: Trước khi lưu xuống database - ĐÂY LÀ ĐIỂM QUAN TRỌNG
     debugger;
@@ -223,10 +231,10 @@ export class WorkflowService {
     return true;
   }
 
-  async removeBySystem(systemId: string): Promise<number> {
+  async removeBySystem(systemId: string | number): Promise<number> {
     // Find workflows for this system
     const workflows = await this.workflowRepository.find({
-      where: { systemId },
+      where: { systemId: Number(systemId) },
     });
 
     // Delete activities and transitions first (cascade will handle this, but let's be explicit)
@@ -246,12 +254,14 @@ export class WorkflowService {
     }
 
     // Then delete workflows
-    const result = await this.workflowRepository.delete({ systemId });
+    const result = await this.workflowRepository.delete({
+      systemId: Number(systemId),
+    });
     return result.affected || 0;
   }
 
   async syncWorkflows(
-    systemId: string,
+    systemId: string | number,
     workflows: CreateWorkflowDto[]
   ): Promise<WorkflowEntity[]> {
     // BREAKPOINT 10: Bắt đầu syncWorkflows service
@@ -264,59 +274,79 @@ export class WorkflowService {
     // Sync workflows: update if exists, create if not
     const syncedWorkflows: WorkflowEntity[] = [];
 
+    const systemIdNum = Number(systemId);
     for (let i = 0; i < workflows.length; i++) {
       const workflowData = workflows[i];
+      try {
+        const odooWorkflowId =
+          workflowData.workflowId !== undefined &&
+          workflowData.workflowId !== null
+            ? Number(workflowData.workflowId)
+            : undefined;
 
-      // Ensure systemId and systemName are set
-      // Map workflowId to both workflowId and odooWorkflowId if needed
-      const workflowWithSystemInfo = {
-        ...workflowData,
-        systemId: systemId,
-        systemName: await this.resolveSystemName(systemId),
-        // Map workflowId to odooWorkflowId if odooWorkflowId is not set
-        odooWorkflowId: workflowData.workflowId,
-      };
+        // Ensure systemId and systemName are set
+        // Map workflowId to both workflowId and odooWorkflowId if needed
+        const workflowWithSystemInfo = {
+          ...workflowData,
+          systemId: systemIdNum,
+          systemName: await this.resolveSystemName(systemId),
+          // Map workflowId to odooWorkflowId if odooWorkflowId is not set
+          odooWorkflowId,
+        };
 
-      // Find existing workflow by systemId + odooWorkflowId (from Odoo)
-      let existingWorkflow: WorkflowEntity | null = null;
-      if (workflowData.workflowId) {
-        existingWorkflow = await this.workflowRepository.findOne({
-          where: {
-            systemId: systemId,
-            odooWorkflowId: workflowData.workflowId,
-          },
-        });
-      }
-
-      // Fallback: nếu không tìm thấy theo odooWorkflowId, thử khớp theo systemId + model
-      if (!existingWorkflow) {
-        existingWorkflow = await this.workflowRepository.findOne({
-          where: {
-            systemId: systemId,
-            model: workflowData.model,
-          },
-        });
-      }
-
-      let workflow: WorkflowEntity;
-      if (existingWorkflow) {
-        const { activities, ...updateData } = workflowWithSystemInfo as any;
-        delete updateData.id;
-        Object.assign(existingWorkflow, updateData);
-        workflow = await this.workflowRepository.save(existingWorkflow);
-        if (workflowData.activities && workflowData.activities.length > 0) {
-          await this.updateOrCreateActivities(
-            workflow.id,
-            workflowData.activities
-          );
+        // Find existing workflow by systemId + odooWorkflowId (from Odoo)
+        let existingWorkflow: WorkflowEntity | null = null;
+        if (odooWorkflowId !== undefined) {
+          existingWorkflow = await this.workflowRepository.findOne({
+            where: {
+              systemId: systemIdNum,
+              odooWorkflowId,
+            },
+          });
         }
-      } else {
-        workflow = await this.create(workflowWithSystemInfo);
-        if (workflowData.activities && workflowData.activities.length > 0) {
-          await this.saveActivities(workflow.id, workflowData.activities);
+
+        // Fallback: nếu không tìm thấy theo odooWorkflowId, thử khớp theo systemId + model
+        if (!existingWorkflow) {
+          existingWorkflow = await this.workflowRepository.findOne({
+            where: {
+              systemId: systemIdNum,
+              model: workflowData.model,
+            },
+          });
         }
+
+        let workflow: WorkflowEntity;
+        if (existingWorkflow) {
+          const { activities, ...updateData } = workflowWithSystemInfo as any;
+          updateData.systemId = Number(updateData.systemId);
+          delete updateData.id;
+          Object.assign(existingWorkflow, updateData);
+          workflow = await this.workflowRepository.save(existingWorkflow);
+          if (workflowData.activities && workflowData.activities.length > 0) {
+            await this.updateOrCreateActivities(
+              workflow.id,
+              workflowData.activities
+            );
+          }
+        } else {
+          // Ensure id from payload is not forwarded to creation
+          const { id: _ignoreId, ...toCreate } = workflowWithSystemInfo as any;
+          workflow = await this.create({
+            ...toCreate,
+            workflowId: odooWorkflowId,
+          });
+          if (workflowData.activities && workflowData.activities.length > 0) {
+            await this.saveActivities(workflow.id, workflowData.activities);
+          }
+        }
+        syncedWorkflows.push(workflow);
+      } catch (e: any) {
+        console.error(
+          `❌ [syncWorkflows] Failed at index ${i}:`,
+          e?.message || e
+        );
+        continue;
       }
-      syncedWorkflows.push(workflow);
     }
 
     // Update system counters after syncing all workflows
@@ -337,7 +367,7 @@ export class WorkflowService {
    * Only deletes activities that are no longer in the new list
    */
   private async updateOrCreateActivities(
-    workflowId: string,
+    workflowId: number,
     activities: any[]
   ): Promise<void> {
     // Get list of activityIds from new data
@@ -367,9 +397,21 @@ export class WorkflowService {
       const existingActivity = existingActivitiesMap.get(activityId);
 
       // Prepare activity data
+      const parsedActivityId =
+        activityData.id !== undefined && activityData.id !== null
+          ? Number(activityData.id)
+          : undefined;
+      if (!parsedActivityId) {
+        console.warn(
+          `⚠️ Activity without valid numeric id skipped:`,
+          activityData
+        );
+        continue;
+      }
+
       const activityUpdateData = {
         workflowId,
-        activityId: activityData.id,
+        activityId: parsedActivityId,
         name: activityData.name,
         code: activityData.code || null,
         kind: activityData.kind,
@@ -432,14 +474,26 @@ export class WorkflowService {
    * Used for new workflows
    */
   private async saveActivities(
-    workflowId: string,
+    workflowId: number,
     activities: any[]
   ): Promise<void> {
     for (const activityData of activities) {
+      const parsedActivityId =
+        activityData.id !== undefined && activityData.id !== null
+          ? Number(activityData.id)
+          : undefined;
+      if (!parsedActivityId) {
+        console.warn(
+          `⚠️ Activity without valid numeric id skipped:`,
+          activityData
+        );
+        continue;
+      }
+
       // Create activity
       const activity = this.activityRepository.create({
         workflowId,
-        activityId: activityData.id,
+        activityId: parsedActivityId,
         name: activityData.name,
         code: activityData.code || null,
         kind: activityData.kind,
@@ -468,17 +522,32 @@ export class WorkflowService {
   }
 
   private async saveTransitions(
-    activityId: string,
+    activityId: number,
     transitions: any[]
   ): Promise<void> {
     for (const transitionData of transitions) {
+      const parsedTransitionId =
+        transitionData.id !== undefined && transitionData.id !== null
+          ? Number(transitionData.id)
+          : undefined;
+      if (!parsedTransitionId) {
+        console.warn(
+          `⚠️ Transition without valid numeric id skipped:`,
+          transitionData
+        );
+        continue;
+      }
+
       const transition = this.transitionRepository.create({
         activityId,
-        transitionId: transitionData.id,
+        transitionId: parsedTransitionId,
         signal: transitionData.signal,
         condition: transitionData.condition || null,
         sequence: transitionData.sequence || 0,
-        targetActivityId: transitionData.target_activity_id,
+        targetActivityId:
+          transitionData.target_activity_id != null
+            ? Number(transitionData.target_activity_id)
+            : 0,
         targetActivityName: transitionData.target_activity_name,
         groupRequired: transitionData.group_required || false,
       });
@@ -487,15 +556,15 @@ export class WorkflowService {
     }
   }
 
-  private async updateSystemCounters(systemId: string): Promise<void> {
+  private async updateSystemCounters(systemId: string | number): Promise<void> {
     const system = await this.systemRepository.findOne({
-      where: { id: systemId },
+      where: { id: Number(systemId) },
     });
     if (!system) {
       return;
     }
 
-    const workflows = await this.findBySystem(systemId);
+    const workflows = await this.findBySystem(Number(systemId));
     const workflowsCount = workflows.length;
     const violationsCount = workflows.reduce(
       (sum, wf) => sum + wf.violations,
@@ -510,7 +579,7 @@ export class WorkflowService {
   }
 
   async updateActivity(
-    activityId: string,
+    activityId: string | number,
     updateData: {
       violationAction?: "notify" | "auto_approve";
       slaHours?: number;
@@ -519,7 +588,7 @@ export class WorkflowService {
     }
   ): Promise<ActivityEntity | null> {
     const activity = await this.activityRepository.findOne({
-      where: { id: activityId },
+      where: { id: Number(activityId) },
     });
 
     if (!activity) {
@@ -543,9 +612,9 @@ export class WorkflowService {
     return this.activityRepository.save(activity);
   }
 
-  async deleteActivity(activityId: string): Promise<boolean> {
+  async deleteActivity(activityId: string | number): Promise<boolean> {
     const activity = await this.activityRepository.findOne({
-      where: { id: activityId },
+      where: { id: Number(activityId) },
     });
     if (!activity) {
       return false;

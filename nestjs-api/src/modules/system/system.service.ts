@@ -98,17 +98,25 @@ export class SystemService {
     });
   }
 
-  async findOne(id: string): Promise<SystemEntity | null> {
-    return this.systemRepository.findOne({ where: { id } });
+  async findOne(id: string | number): Promise<SystemEntity | null> {
+    return this.systemRepository.findOne({ where: { id: Number(id) } });
   }
 
   async create(createSystemDto: CreateSystemDto): Promise<SystemEntity> {
-    const system = this.systemRepository.create(createSystemDto);
-    return this.systemRepository.save(system);
+    // Frontend có thể gửi 'name' thay vì 'systemName' -> map lại để tránh NOT NULL violation
+    const payload: any = { ...createSystemDto };
+    if (!payload.systemName && payload.name) {
+      payload.systemName = payload.name;
+      delete payload.name;
+    }
+    const system = this.systemRepository.create(
+      payload as Partial<SystemEntity>
+    ) as SystemEntity;
+    return this.systemRepository.save(system as SystemEntity);
   }
 
   async update(
-    id: string,
+    id: string | number,
     updateSystemDto: UpdateSystemDto
   ): Promise<SystemEntity | null> {
     const system = await this.findOne(id);
@@ -162,7 +170,7 @@ export class SystemService {
     // Update systemName in all workflows for this system
     if (updateSystemDto.name !== undefined) {
       await this.workflowRepository.update(
-        { systemId: id },
+        { systemId: Number(id) },
         { systemName: updateSystemDto.name }
       );
     }
@@ -170,13 +178,13 @@ export class SystemService {
     return updatedSystem;
   }
 
-  async remove(id: string): Promise<boolean> {
-    const result = await this.systemRepository.delete(id);
+  async remove(id: string | number): Promise<boolean> {
+    const result = await this.systemRepository.delete(Number(id));
     return (result.affected || 0) > 0;
   }
 
   async updateCounters(
-    id: string,
+    id: string | number,
     workflowsCount: number,
     violationsCount: number
   ): Promise<void> {

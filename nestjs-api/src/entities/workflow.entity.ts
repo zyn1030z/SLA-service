@@ -12,11 +12,11 @@ import { ActivityEntity } from "./activity.entity";
 @Entity("workflows")
 @Index(["systemId", "model"])
 export class WorkflowEntity {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id!: number;
 
-  @Column({ name: "system_id" })
-  systemId!: string;
+  @Column({ name: "system_id", type: "int" })
+  systemId!: number;
 
   @Column({ name: "system_name" })
   systemName!: string;
