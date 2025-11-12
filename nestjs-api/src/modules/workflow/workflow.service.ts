@@ -105,6 +105,13 @@ export class WorkflowService {
     private systemRepository: Repository<SystemEntity>
   ) {}
 
+  private async resolveSystemName(systemId: string): Promise<string> {
+    const system = await this.systemRepository.findOne({
+      where: { id: systemId },
+    });
+    return system?.systemName || `System ${systemId}`;
+  }
+
   async findAll(): Promise<WorkflowEntity[]> {
     const results = await this.workflowRepository.find({
       order: { createdAt: "DESC" },
@@ -133,6 +140,13 @@ export class WorkflowService {
   async create(createWorkflowDto: CreateWorkflowDto): Promise<WorkflowEntity> {
     // Extract activities before creating workflow to avoid mapping issues
     const { activities, ...workflowData } = createWorkflowDto;
+
+    // Ensure systemName is synced from Systems table
+    if (workflowData.systemId) {
+      workflowData.systemName = await this.resolveSystemName(
+        workflowData.systemId
+      );
+    }
 
     // BREAKPOINT: Trước khi tạo workflow entity
     debugger;
@@ -258,7 +272,7 @@ export class WorkflowService {
       const workflowWithSystemInfo = {
         ...workflowData,
         systemId: systemId,
-        systemName: `System ${systemId}`, // TODO: Get actual system name from SystemEntity
+        systemName: await this.resolveSystemName(systemId),
         // Map workflowId to odooWorkflowId if odooWorkflowId is not set
         odooWorkflowId: workflowData.workflowId,
       };
