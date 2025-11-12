@@ -218,18 +218,17 @@ export default function RecordsPage() {
               className="pl-8 w-64"
             />
           </div>
-          <Button variant="outline">
-            <Filter className="h-4 w-4 mr-2" />
-            {t("records.filter")}
-          </Button>
           <Select
             value={groupBy}
             onValueChange={(value) =>
               setGroupBy(value as "none" | "workflow" | "step" | "status")
             }
           >
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder={t("records.groupBy")} />
+            <SelectTrigger className="w-52">
+              <div className="flex items-center">
+                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder={t("records.groupBy")} />
+              </div>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">{t("records.groupNone")}</SelectItem>
