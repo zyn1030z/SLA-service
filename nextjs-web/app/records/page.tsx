@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/lib/use-translation";
 import {
   Card,
@@ -21,6 +21,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Search,
   Filter,
   Clock,
@@ -38,6 +45,9 @@ export default function RecordsPage() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [groupBy, setGroupBy] = useState<
+    "none" | "workflow" | "step" | "status"
+  >("none");
 
   const loadRecords = async () => {
     setLoading(true);
@@ -67,6 +77,48 @@ export default function RecordsPage() {
       record.stepName?.toLowerCase().includes(s)
     );
   });
+
+  const groupedRecords = useMemo(() => {
+    if (groupBy === "none") {
+      return [
+        {
+          label: null as string | null,
+          items: filteredRecords,
+        },
+      ];
+    }
+
+    const labelMap = new Map<string, { label: string; items: any[] }>();
+
+    const getLabel = (record: any) => {
+      switch (groupBy) {
+        case "workflow":
+          return record.workflowName || t("records.groupUnknown");
+        case "step":
+          return (
+            record.stepName || record.stepCode || t("records.groupUnknown")
+          );
+        case "status":
+          if (record.status === "waiting") return t("records.waiting");
+          if (record.status === "violated") return t("records.violated");
+          if (record.status === "completed") return t("records.completed");
+          return record.status || t("records.groupUnknown");
+        default:
+          return t("records.groupUnknown");
+      }
+    };
+
+    filteredRecords.forEach((record) => {
+      const label = getLabel(record);
+      const key = `${groupBy}-${label}`;
+      if (!labelMap.has(key)) {
+        labelMap.set(key, { label, items: [] });
+      }
+      labelMap.get(key)!.items.push(record);
+    });
+
+    return Array.from(labelMap.values());
+  }, [filteredRecords, groupBy, t]);
 
   const getStatusBadge = (status: string, violationCount: number) => {
     if (status === "completed") {
@@ -170,6 +222,24 @@ export default function RecordsPage() {
             <Filter className="h-4 w-4 mr-2" />
             {t("records.filter")}
           </Button>
+          <Select
+            value={groupBy}
+            onValueChange={(value) =>
+              setGroupBy(value as "none" | "workflow" | "step" | "status")
+            }
+          >
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder={t("records.groupBy")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t("records.groupNone")}</SelectItem>
+              <SelectItem value="workflow">
+                {t("records.groupWorkflow")}
+              </SelectItem>
+              <SelectItem value="step">{t("records.groupStep")}</SelectItem>
+              <SelectItem value="status">{t("records.groupStatus")}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -274,44 +344,72 @@ export default function RecordsPage() {
                     <TableHead>{t("records.violations")}</TableHead>
                     <TableHead>{t("records.timeRemaining")}</TableHead>
                     <TableHead>{t("records.started")}</TableHead>
+                    <TableHead>{t("records.approvers")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="font-medium">
-                        {record.recordId}
-                      </TableCell>
-                      <TableCell>{record.workflowName}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{record.stepName}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {record.stepCode}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(record.status, record.violationCount)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            record.violationCount > 0
-                              ? "destructive"
-                              : "secondary"
-                          }
-                        >
-                          {record.violationCount}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {getRemainingTime(record.remainingHours)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDateTime(record.startTime)}
-                      </TableCell>
-                    </TableRow>
+                  {groupedRecords.map((group) => (
+                    <React.Fragment key={group.label ?? "all"}>
+                      {group.label && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                          >
+                            {group.label}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {group.items.map((record) => (
+                        <TableRow key={record.id}>
+                          <TableCell className="font-medium">
+                            {record.recordId}
+                          </TableCell>
+                          <TableCell>{record.workflowName}</TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {record.stepName}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {record.stepCode}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(
+                              record.status,
+                              record.violationCount
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                record.violationCount > 0
+                                  ? "destructive"
+                                  : "secondary"
+                              }
+                            >
+                              {record.violationCount}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {getRemainingTime(record.remainingHours)}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDateTime(record.startTime)}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {Array.isArray(record.userApprove) &&
+                            record.userApprove.length > 0
+                              ? record.userApprove
+                                  .map((u: any) => u.name || u.login || u.id)
+                                  .join(", ")
+                              : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>

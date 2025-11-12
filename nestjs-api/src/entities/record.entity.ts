@@ -56,8 +56,21 @@ export class RecordEntity {
   @Column({ name: "sla_hours", type: "int", default: 24 })
   slaHours!: number;
 
-  @Column({ name: "remaining_hours", type: "numeric", precision: 10, scale: 2, default: 0 })
+  @Column({
+    name: "remaining_hours",
+    type: "numeric",
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
   remainingHours!: number;
+
+  @Column({ name: "user_approve", type: "jsonb", nullable: true })
+  userApprove!: Array<{
+    id: number;
+    name: string;
+    login: string;
+  }> | null;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

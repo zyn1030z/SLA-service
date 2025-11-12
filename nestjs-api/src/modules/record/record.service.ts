@@ -29,6 +29,11 @@ export interface CreateRecordDto {
   violationCount?: number;
   slaHours?: number;
   remainingHours?: number;
+  userApprove?: Array<{
+    id: number;
+    name: string;
+    login: string;
+  }>;
 }
 
 @Injectable()
@@ -49,6 +54,11 @@ export class RecordService {
   }
 
   async create(payload: CreateRecordDto): Promise<RecordEntity> {
+    // Hỗ trợ cả camelCase và snake_case cho user_approve
+    const anyPayload = payload as any;
+    const incomingUserApprove =
+      payload.userApprove ?? anyPayload.user_approve ?? null;
+
     let systemId: number;
     let workflowId: number;
     let workflow: WorkflowEntity | null = null;
@@ -242,6 +252,7 @@ export class RecordService {
       violationCount: payload.violationCount ?? violationCount,
       slaHours,
       remainingHours: payload.remainingHours ?? remainingHoursDecimal,
+      userApprove: incomingUserApprove ?? null,
     });
 
     const savedRecord = await this.recordRepository.save(entity);
