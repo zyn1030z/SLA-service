@@ -90,6 +90,31 @@ export class UpdateWorkflowDto {
 
   // @ApiProperty({ description: "Activities data", required: false, type: "array" })
   activities?: any[];
+
+  // @ApiProperty({ description: "Global notification API config", required: false })
+  notifyApiConfig?: {
+    url: string;
+    method: "POST" | "GET" | "PUT";
+    headers: Record<string, string>;
+    body?: Record<string, any>;
+  };
+
+  // @ApiProperty({ description: "Global auto-approval API config", required: false })
+  autoApproveApiConfig?: {
+    approvalType: "single" | "multiple";
+    singleApprovalConfig?: {
+      url: string;
+      method: "POST" | "GET" | "PUT";
+      headers: Record<string, string>;
+      body?: Record<string, any>;
+    };
+    multipleApprovalConfig?: {
+      url: string;
+      method: "POST" | "GET" | "PUT";
+      headers: Record<string, string>;
+      body?: Record<string, any>;
+    };
+  };
 }
 
 @Injectable()
@@ -131,10 +156,76 @@ export class WorkflowService {
   }
 
   async findOne(id: string | number): Promise<WorkflowEntity | null> {
-    return this.workflowRepository.findOne({
-      where: { id: Number(id) },
-      relations: ["activities", "activities.transitions"],
-    });
+    try {
+      const workflow = await this.workflowRepository.findOne({
+        where: { id: Number(id) },
+        relations: ["activities", "activities.transitions"],
+      });
+
+      if (!workflow) {
+        return null;
+      }
+
+      // Ensure JSONB fields are properly serialized (TypeORM should handle this, but just in case)
+      // Serialize workflow-level JSONB fields
+      if (
+        workflow.notifyApiConfig &&
+        typeof workflow.notifyApiConfig === "string"
+      ) {
+        try {
+          workflow.notifyApiConfig = JSON.parse(workflow.notifyApiConfig);
+        } catch (e) {
+          workflow.notifyApiConfig = null;
+        }
+      }
+      if (
+        workflow.autoApproveApiConfig &&
+        typeof workflow.autoApproveApiConfig === "string"
+      ) {
+        try {
+          workflow.autoApproveApiConfig = JSON.parse(
+            workflow.autoApproveApiConfig
+          );
+        } catch (e) {
+          workflow.autoApproveApiConfig = null;
+        }
+      }
+
+      // Serialize activity-level JSONB fields
+      if (workflow.activities) {
+        workflow.activities = workflow.activities.map((activity: any) => {
+          // Ensure JSONB fields are objects, not strings
+          if (
+            activity.notifyApiConfig &&
+            typeof activity.notifyApiConfig === "string"
+          ) {
+            try {
+              activity.notifyApiConfig = JSON.parse(activity.notifyApiConfig);
+            } catch (e) {
+              activity.notifyApiConfig = null;
+            }
+          }
+          if (
+            activity.autoApproveApiConfig &&
+            typeof activity.autoApproveApiConfig === "string"
+          ) {
+            try {
+              activity.autoApproveApiConfig = JSON.parse(
+                activity.autoApproveApiConfig
+              );
+            } catch (e) {
+              activity.autoApproveApiConfig = null;
+            }
+          }
+          return activity;
+        });
+      }
+
+      return workflow;
+    } catch (error: any) {
+      console.error(`Error in findOne for workflow ${id}:`, error);
+      throw error;
+    }
   }
 
   async create(createWorkflowDto: CreateWorkflowDto): Promise<WorkflowEntity> {
@@ -585,6 +676,27 @@ export class WorkflowService {
       slaHours?: number;
       maxViolations?: number;
       isActive?: boolean;
+      notifyApiConfig?: {
+        url: string;
+        method: "POST" | "GET" | "PUT";
+        headers: Record<string, string>;
+        body?: Record<string, any>;
+      };
+      autoApproveApiConfig?: {
+        approvalType: "single" | "multiple";
+        singleApprovalConfig?: {
+          url: string;
+          method: "POST" | "GET" | "PUT";
+          headers: Record<string, string>;
+          body?: Record<string, any>;
+        };
+        multipleApprovalConfig?: {
+          url: string;
+          method: "POST" | "GET" | "PUT";
+          headers: Record<string, string>;
+          body?: Record<string, any>;
+        };
+      };
     }
   ): Promise<ActivityEntity | null> {
     const activity = await this.activityRepository.findOne({
@@ -607,6 +719,12 @@ export class WorkflowService {
     }
     if (updateData.isActive !== undefined) {
       activity.isActive = updateData.isActive;
+    }
+    if (updateData.notifyApiConfig !== undefined) {
+      activity.notifyApiConfig = updateData.notifyApiConfig;
+    }
+    if (updateData.autoApproveApiConfig !== undefined) {
+      activity.autoApproveApiConfig = updateData.autoApproveApiConfig;
     }
 
     return this.activityRepository.save(activity);

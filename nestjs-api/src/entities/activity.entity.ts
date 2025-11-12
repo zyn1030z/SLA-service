@@ -86,6 +86,40 @@ export class ActivityEntity {
   })
   isActive!: boolean;
 
+  // API Configuration for notifications and approvals
+  @Column({
+    name: "notify_api_config",
+    type: "jsonb",
+    nullable: true,
+  })
+  notifyApiConfig?: {
+    url: string;
+    method: "POST" | "GET" | "PUT";
+    headers: Record<string, string>;
+    body?: Record<string, any>;
+  } | null;
+
+  @Column({
+    name: "auto_approve_api_config",
+    type: "jsonb",
+    nullable: true,
+  })
+  autoApproveApiConfig?: {
+    approvalType: "single" | "multiple";
+    singleApprovalConfig?: {
+      url: string;
+      method: "POST" | "GET" | "PUT";
+      headers: Record<string, string>;
+      body?: Record<string, any>;
+    };
+    multipleApprovalConfig?: {
+      url: string;
+      method: "POST" | "GET" | "PUT";
+      headers: Record<string, string>;
+      body?: Record<string, any>;
+    };
+  } | null;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 

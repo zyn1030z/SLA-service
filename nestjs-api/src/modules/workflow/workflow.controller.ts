@@ -34,7 +34,16 @@ export class WorkflowController {
   @Public()
   @Get(":id")
   async getWorkflow(@Param("id") id: string) {
-    return this.workflowService.findOne(id);
+    try {
+      const workflow = await this.workflowService.findOne(id);
+      if (!workflow) {
+        return null;
+      }
+      return workflow;
+    } catch (error) {
+      console.error("Error fetching workflow:", error);
+      throw error;
+    }
   }
 
   @Public()
@@ -89,6 +98,27 @@ export class WorkflowController {
       slaHours?: number;
       maxViolations?: number;
       isActive?: boolean;
+      notifyApiConfig?: {
+        url: string;
+        method: "POST" | "GET" | "PUT";
+        headers: Record<string, string>;
+        body?: Record<string, any>;
+      };
+      autoApproveApiConfig?: {
+        approvalType: "single" | "multiple";
+        singleApprovalConfig?: {
+          url: string;
+          method: "POST" | "GET" | "PUT";
+          headers: Record<string, string>;
+          body?: Record<string, any>;
+        };
+        multipleApprovalConfig?: {
+          url: string;
+          method: "POST" | "GET" | "PUT";
+          headers: Record<string, string>;
+          body?: Record<string, any>;
+        };
+      };
     }
   ) {
     return this.workflowService.updateActivity(activityId, updateData);

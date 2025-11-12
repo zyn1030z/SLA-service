@@ -56,7 +56,7 @@ export class RecordEntity {
   @Column({ name: "sla_hours", type: "int", default: 24 })
   slaHours!: number;
 
-  @Column({ name: "remaining_hours", type: "int", default: 0 })
+  @Column({ name: "remaining_hours", type: "numeric", precision: 10, scale: 2, default: 0 })
   remainingHours!: number;
 
   @CreateDateColumn({ name: "created_at" })

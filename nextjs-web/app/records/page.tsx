@@ -82,11 +82,45 @@ export default function RecordsPage() {
     }
   };
 
+  /**
+   * Chuyển đổi số giờ (có thể là số thập phân) sang format HH:mm:ss
+   */
+  const formatHoursToTime = (hours: number): string => {
+    const totalSeconds = Math.abs(Math.round(hours * 3600));
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(
+      2,
+      "0"
+    )}:${String(s).padStart(2, "0")}`;
+  };
+
+  /**
+   * Format date để hiển thị đúng như database (UTC, không bị timezone conversion)
+   * Database lưu UTC: "2025-11-12 14:42:12+00"
+   * Hiển thị: "2025-11-12 14:42:12" (giống database, không cộng thêm 7 giờ)
+   */
+  const formatDateTime = (dateInput: string | Date): string => {
+    const date = new Date(dateInput);
+    // Lấy UTC time trực tiếp, không bị ảnh hưởng bởi timezone của browser
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+
   const getRemainingTime = (remainingHours: number) => {
     if (remainingHours < 0) {
+      const timeStr = formatHoursToTime(remainingHours);
       return (
         <span className="text-destructive font-medium">
-          {Math.abs(remainingHours)}h {t("records.overdue")}
+          {timeStr} {t("records.overdue")}
         </span>
       );
     } else if (remainingHours === 0) {
@@ -94,9 +128,10 @@ export default function RecordsPage() {
         <span className="text-muted-foreground">{t("records.completed")}</span>
       );
     } else {
+      const timeStr = formatHoursToTime(remainingHours);
       return (
         <span className="text-blue-600 font-medium">
-          {remainingHours}h {t("records.remaining")}
+          {timeStr} {t("records.remaining")}
         </span>
       );
     }
@@ -274,7 +309,7 @@ export default function RecordsPage() {
                         {getRemainingTime(record.remainingHours)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(record.startTime).toLocaleString()}
+                        {formatDateTime(record.startTime)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -346,7 +381,7 @@ export default function RecordsPage() {
                           {getRemainingTime(record.remainingHours)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(record.startTime).toLocaleString()}
+                          {formatDateTime(record.startTime)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -390,11 +425,11 @@ export default function RecordsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-destructive font-medium">
-                          {Math.abs(record.remainingHours)}h{" "}
+                          {formatHoursToTime(record.remainingHours)}{" "}
                           {t("records.overdue")}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(record.startTime).toLocaleString()}
+                          {formatDateTime(record.startTime)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -432,7 +467,7 @@ export default function RecordsPage() {
                         <TableCell>{record.workflowName}</TableCell>
                         <TableCell>{record.stepName}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(record.startTime).toLocaleString()}
+                          {formatDateTime(record.startTime)}
                         </TableCell>
                         <TableCell className="text-green-600 font-medium">
                           {t("records.withinSla")}

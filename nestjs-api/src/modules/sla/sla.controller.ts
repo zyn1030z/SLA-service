@@ -1,8 +1,14 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, forwardRef } from "@nestjs/common";
 import { Public } from "../auth/public.decorator";
+import { SlaCronJob } from "../scheduler/sla.cron";
 
 @Controller()
 export class SlaController {
+  constructor(
+    @Inject(forwardRef(() => SlaCronJob))
+    private readonly slaCronJob: SlaCronJob
+  ) {}
+
   @Public()
   @Post("sla/start")
   async startSla(@Body() body: unknown) {
@@ -27,5 +33,14 @@ export class SlaController {
   async dashboardSummary() {
     // TODO: aggregate stats
     return { totalViolations: 0 };
+  }
+
+  /**
+   * Chạy kiểm tra SLA violation thủ công
+   */
+  @Public()
+  @Post("sla/check")
+  async runSlaCheck() {
+    return this.slaCronJob.runSlaCheck();
   }
 }

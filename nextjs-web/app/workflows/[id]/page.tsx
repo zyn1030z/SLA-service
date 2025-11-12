@@ -152,6 +152,27 @@ interface WorkflowDetail {
   totalViolations: number;
   activeRecords: number;
   status: "active" | "inactive";
+  notifyApiConfig?: {
+    url: string;
+    method: "POST" | "GET" | "PUT";
+    headers: Record<string, string>;
+    body?: Record<string, any>;
+  };
+  autoApproveApiConfig?: {
+    approvalType: "single" | "multiple";
+    singleApprovalConfig?: {
+      url: string;
+      method: "POST" | "GET" | "PUT";
+      headers: Record<string, string>;
+      body?: Record<string, any>;
+    };
+    multipleApprovalConfig?: {
+      url: string;
+      method: "POST" | "GET" | "PUT";
+      headers: Record<string, string>;
+      body?: Record<string, any>;
+    };
+  };
 }
 
 export default function WorkflowDetailPage() {
@@ -180,6 +201,19 @@ export default function WorkflowDetailPage() {
   const [approvalType, setApprovalType] = useState<"single" | "multiple">(
     "single"
   );
+  const [showWorkflowApiConfig, setShowWorkflowApiConfig] = useState(false);
+  const [workflowApiConfigType, setWorkflowApiConfigType] = useState<
+    "notify" | "auto_approve"
+  >("notify");
+  const [workflowApiConfigForm, setWorkflowApiConfigForm] = useState({
+    url: "",
+    method: "POST" as "POST" | "GET" | "PUT",
+    headers: "{}",
+    body: "{}",
+  });
+  const [workflowApprovalType, setWorkflowApprovalType] = useState<
+    "single" | "multiple"
+  >("single");
 
   useEffect(() => {
     const loadWorkflow = async () => {
@@ -232,6 +266,8 @@ export default function WorkflowDetailPage() {
             totalViolations: workflowData.violations || 0,
             activeRecords: 0, // This would need to be calculated
             status: workflowData.status,
+            notifyApiConfig: workflowData.notifyApiConfig,
+            autoApproveApiConfig: workflowData.autoApproveApiConfig,
           });
         } else {
           console.error("Failed to load workflow:", response.statusText);
@@ -471,6 +507,128 @@ export default function WorkflowDetailPage() {
 
       setShowApiConfig(false);
       setApiConfigStep(null);
+    } catch (error) {
+      alert("Lỗi định dạng JSON trong Headers hoặc Body");
+    }
+  };
+
+  const openWorkflowApiConfig = (type: "notify" | "auto_approve") => {
+    if (!workflow) return;
+
+    setWorkflowApiConfigType(type);
+
+    if (type === "notify") {
+      const config = workflow.notifyApiConfig;
+      setWorkflowApiConfigForm({
+        url: config?.url || "",
+        method: config?.method || "POST",
+        headers: config?.headers
+          ? JSON.stringify(config.headers, null, 2)
+          : "{}",
+        body: config?.body ? JSON.stringify(config.body, null, 2) : "{}",
+      });
+    } else {
+      // Auto approve config
+      const config = workflow.autoApproveApiConfig;
+      const approvalType = config?.approvalType || "single";
+      setWorkflowApprovalType(approvalType);
+
+      const currentConfig =
+        approvalType === "single"
+          ? config?.singleApprovalConfig
+          : config?.multipleApprovalConfig;
+
+      setWorkflowApiConfigForm({
+        url: currentConfig?.url || "",
+        method: currentConfig?.method || "POST",
+        headers: currentConfig?.headers
+          ? JSON.stringify(currentConfig.headers, null, 2)
+          : "{}",
+        body: currentConfig?.body
+          ? JSON.stringify(currentConfig.body, null, 2)
+          : "{}",
+      });
+    }
+
+    setShowWorkflowApiConfig(true);
+  };
+
+  const handleWorkflowApprovalTypeChange = (newType: "single" | "multiple") => {
+    if (!workflow) return;
+
+    setWorkflowApprovalType(newType);
+
+    const config = workflow.autoApproveApiConfig;
+    const currentConfig =
+      newType === "single"
+        ? config?.singleApprovalConfig
+        : config?.multipleApprovalConfig;
+
+    setWorkflowApiConfigForm({
+      url: currentConfig?.url || "",
+      method: currentConfig?.method || "POST",
+      headers: currentConfig?.headers
+        ? JSON.stringify(currentConfig.headers, null, 2)
+        : "{}",
+      body: currentConfig?.body
+        ? JSON.stringify(currentConfig.body, null, 2)
+        : "{}",
+    });
+  };
+
+  const saveWorkflowApiConfig = async () => {
+    if (!workflow) return;
+
+    try {
+      const headers = JSON.parse(workflowApiConfigForm.headers);
+      const body = JSON.parse(workflowApiConfigForm.body);
+
+      const config = {
+        url: workflowApiConfigForm.url,
+        method: workflowApiConfigForm.method,
+        headers,
+        body,
+      };
+
+      let updateData: any = {};
+
+      if (workflowApiConfigType === "notify") {
+        updateData.notifyApiConfig = config;
+      } else {
+        // Auto approve config
+        const existingAutoConfig = workflow.autoApproveApiConfig || {};
+        updateData.autoApproveApiConfig = {
+          ...existingAutoConfig,
+          approvalType: workflowApprovalType,
+          [workflowApprovalType === "single"
+            ? "singleApprovalConfig"
+            : "multipleApprovalConfig"]: config,
+        };
+      }
+
+      // Call API to update workflow
+      const response = await fetch(
+        `http://localhost:3000/workflows/${workflow.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updateData),
+        }
+      );
+
+      if (response.ok) {
+        // Update local state
+        setWorkflow({
+          ...workflow,
+          ...updateData,
+        });
+        setShowWorkflowApiConfig(false);
+      } else {
+        console.error("Failed to update workflow API config");
+        alert("Lỗi khi lưu cấu hình API. Vui lòng thử lại.");
+      }
     } catch (error) {
       alert("Lỗi định dạng JSON trong Headers hoặc Body");
     }
@@ -1053,6 +1211,130 @@ export default function WorkflowDetailPage() {
 
                 <div className="border-t pt-6">
                   <h3 className="text-lg font-medium mb-4">
+                    Cấu hình API toàn cục (Global API Configuration)
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Cấu hình API áp dụng cho toàn bộ workflow. Các cấu hình này
+                    sẽ được sử dụng khi không có cấu hình riêng ở từng bước.
+                  </p>
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base flex items-center space-x-2">
+                            <Bell className="h-4 w-4 text-orange-600" />
+                            <span>Thông báo (Notification)</span>
+                          </CardTitle>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openWorkflowApiConfig("notify")}
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            {workflow?.notifyApiConfig
+                              ? "Cập nhật"
+                              : "Cấu hình"}
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {workflow?.notifyApiConfig ? (
+                          <div className="text-sm space-y-1">
+                            <div>
+                              <span className="font-medium">URL: </span>
+                              <code className="bg-muted px-2 py-1 rounded">
+                                {workflow.notifyApiConfig.url}
+                              </code>
+                            </div>
+                            <div>
+                              <span className="font-medium">Method: </span>
+                              <code className="bg-muted px-2 py-1 rounded">
+                                {workflow.notifyApiConfig.method}
+                              </code>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Chưa có cấu hình API thông báo
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base flex items-center space-x-2">
+                            <Zap className="h-4 w-4 text-blue-600" />
+                            <span>Tự động phê duyệt (Auto Approve)</span>
+                          </CardTitle>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              openWorkflowApiConfig("auto_approve")
+                            }
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            {workflow?.autoApproveApiConfig
+                              ? "Cập nhật"
+                              : "Cấu hình"}
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {workflow?.autoApproveApiConfig ? (
+                          <div className="text-sm space-y-1">
+                            <div>
+                              <span className="font-medium">Loại: </span>
+                              <code className="bg-muted px-2 py-1 rounded">
+                                {workflow.autoApproveApiConfig.approvalType ===
+                                "single"
+                                  ? "Phê duyệt 1 lần"
+                                  : "Phê duyệt nhiều lần"}
+                              </code>
+                            </div>
+                            {workflow.autoApproveApiConfig
+                              .singleApprovalConfig && (
+                              <div>
+                                <span className="font-medium">
+                                  URL (Single):{" "}
+                                </span>
+                                <code className="bg-muted px-2 py-1 rounded">
+                                  {
+                                    workflow.autoApproveApiConfig
+                                      .singleApprovalConfig.url
+                                  }
+                                </code>
+                              </div>
+                            )}
+                            {workflow.autoApproveApiConfig
+                              .multipleApprovalConfig && (
+                              <div>
+                                <span className="font-medium">
+                                  URL (Multiple):{" "}
+                                </span>
+                                <code className="bg-muted px-2 py-1 rounded">
+                                  {
+                                    workflow.autoApproveApiConfig
+                                      .multipleApprovalConfig.url
+                                  }
+                                </code>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Chưa có cấu hình API phê duyệt tự động
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+
+                <div className="border-t pt-6">
+                  <h3 className="text-lg font-medium mb-4">
                     {t("workflow.violationHandling")}
                   </h3>
                   <div className="space-y-4">
@@ -1361,6 +1643,182 @@ export default function WorkflowDetailPage() {
                     Hủy
                   </Button>
                   <Button onClick={saveApiConfig}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Lưu cấu hình
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Workflow Global API Configuration Modal */}
+        {showWorkflowApiConfig && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <CardHeader>
+                <CardTitle>
+                  Cấu hình API toàn cục -{" "}
+                  {workflowApiConfigType === "notify"
+                    ? "Thông báo"
+                    : "Tự động phê duyệt"}
+                </CardTitle>
+                <CardDescription>
+                  Cấu hình API endpoint toàn cục cho hành động{" "}
+                  {workflowApiConfigType === "notify"
+                    ? "thông báo"
+                    : "tự động phê duyệt"}{" "}
+                  (áp dụng cho toàn bộ workflow)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {workflowApiConfigType === "auto_approve" && (
+                  <div>
+                    <span className="text-sm font-medium">Loại phê duyệt</span>
+                    <div className="flex space-x-4 mt-2">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          value="single"
+                          checked={workflowApprovalType === "single"}
+                          onChange={(e) =>
+                            handleWorkflowApprovalTypeChange(
+                              e.target.value as "single" | "multiple"
+                            )
+                          }
+                          className="rounded"
+                        />
+                        <span className="text-sm">Phê duyệt 1 lần</span>
+                      </label>
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          value="multiple"
+                          checked={workflowApprovalType === "multiple"}
+                          onChange={(e) =>
+                            handleWorkflowApprovalTypeChange(
+                              e.target.value as "single" | "multiple"
+                            )
+                          }
+                          className="rounded"
+                        />
+                        <span className="text-sm">Phê duyệt nhiều lần</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <span className="text-sm font-medium">URL API</span>
+                  <Input
+                    value={workflowApiConfigForm.url}
+                    onChange={(e) =>
+                      setWorkflowApiConfigForm({
+                        ...workflowApiConfigForm,
+                        url: e.target.value,
+                      })
+                    }
+                    placeholder={
+                      workflowApiConfigType === "notify"
+                        ? "https://api.example.com/notify"
+                        : "https://api.example.com/approve"
+                    }
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <span className="text-sm font-medium">HTTP Method</span>
+                  <select
+                    value={workflowApiConfigForm.method}
+                    onChange={(e) =>
+                      setWorkflowApiConfigForm({
+                        ...workflowApiConfigForm,
+                        method: e.target.value as "POST" | "GET" | "PUT",
+                      })
+                    }
+                    className="w-full mt-1 p-2 border rounded"
+                  >
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                    <option value="PUT">PUT</option>
+                  </select>
+                </div>
+
+                <div>
+                  <span className="text-sm font-medium">Headers (JSON)</span>
+                  <textarea
+                    value={workflowApiConfigForm.headers}
+                    onChange={(e) =>
+                      setWorkflowApiConfigForm({
+                        ...workflowApiConfigForm,
+                        headers: e.target.value,
+                      })
+                    }
+                    placeholder='{"Content-Type": "application/json", "Authorization": "Bearer token"}'
+                    className="w-full mt-1 p-2 border rounded h-24 font-mono text-sm"
+                  />
+                </div>
+
+                <div>
+                  <span className="text-sm font-medium">Body (JSON)</span>
+                  <textarea
+                    value={workflowApiConfigForm.body}
+                    onChange={(e) =>
+                      setWorkflowApiConfigForm({
+                        ...workflowApiConfigForm,
+                        body: e.target.value,
+                      })
+                    }
+                    placeholder='{"message": "SLA violation", "workflowId": "{workflowId}", "recordId": "{recordId}"}'
+                    className="w-full mt-1 p-2 border rounded h-32 font-mono text-sm"
+                  />
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg">
+                  <h4 className="text-sm font-medium mb-2">Biến có sẵn:</h4>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>
+                      <code>{"{workflowId}"}</code> - ID của workflow
+                    </div>
+                    <div>
+                      <code>{"{workflowName}"}</code> - Tên workflow
+                    </div>
+                    <div>
+                      <code>{"{recordId}"}</code> - ID bản ghi
+                    </div>
+                    <div>
+                      <code>{"{violationCount}"}</code> - Số lần vi phạm
+                    </div>
+                    <div>
+                      <code>{"{timestamp}"}</code> - Thời gian hiện tại
+                    </div>
+                    {workflowApiConfigType === "auto_approve" && (
+                      <>
+                        <div>
+                          <code>{"{approvalType}"}</code> - Loại phê duyệt (
+                          {workflowApprovalType === "single"
+                            ? "single"
+                            : "multiple"}
+                          )
+                        </div>
+                        <div>
+                          <code>{"{approvalCount}"}</code> - Số lần đã phê duyệt
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowWorkflowApiConfig(false)}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Hủy
+                  </Button>
+                  <Button onClick={saveWorkflowApiConfig}>
                     <Save className="h-4 w-4 mr-2" />
                     Lưu cấu hình
                   </Button>

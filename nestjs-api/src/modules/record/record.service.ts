@@ -121,8 +121,7 @@ export class RecordService {
     }
 
     // Use workflowName from workflow if not provided
-    const workflowName =
-      payload.workflowName ?? workflow.workflowName ?? null;
+    const workflowName = payload.workflowName ?? workflow.workflowName ?? null;
 
     // Find activity from stepCode if provided
     let activityId: number | null = null;
@@ -142,15 +141,92 @@ export class RecordService {
         if (!stepName) {
           stepName = activity.name;
         }
-        // Use activity SLA hours if slaHours not provided
-        if (!payload.slaHours && activity.slaHours) {
-          // Will be handled below
-        }
       } else {
         // Activity not found, but we still allow creating record with stepCode
         // This is optional, so we don't throw error
       }
     }
+
+    // Determine SLA hours: use from activity, then payload, then default
+    let slaHours = payload.slaHours ?? 24;
+    if (activityId) {
+      const activity = await this.activityRepository.findOne({
+        where: { id: activityId },
+      });
+      if (activity?.slaHours) {
+        slaHours = activity.slaHours;
+      }
+    }
+
+    // Parse startTime - hỗ trợ nhiều format
+    let startTime: Date;
+    if (payload.startTime) {
+      const timeStr = String(payload.startTime).trim();
+      // Nếu format là "YYYY-MM-DD HH:mm:ss", parse thủ công để tránh timezone issues
+      if (timeStr.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+        // Parse "2025-11-12 14:42:12" thành Date object
+        // Tách các phần: YYYY-MM-DD và HH:mm:ss
+        const [datePart, timePart] = timeStr.split(" ");
+        const [year, month, day] = datePart.split("-").map(Number);
+        const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+        // Tạo Date object theo UTC để tránh timezone conversion
+        // Sử dụng Date.UTC() để tạo UTC timestamp
+        startTime = new Date(
+          Date.UTC(year, month - 1, day, hours, minutes, seconds || 0)
+        );
+
+        // Kiểm tra nếu parse sai (Invalid Date)
+        if (isNaN(startTime.getTime())) {
+          console.warn(
+            `Invalid startTime format: ${timeStr}, using current time`
+          );
+          startTime = new Date();
+        }
+      } else {
+        startTime = new Date(payload.startTime);
+        // Kiểm tra nếu parse sai
+        if (isNaN(startTime.getTime())) {
+          console.warn(
+            `Invalid startTime: ${payload.startTime}, using current time`
+          );
+          startTime = new Date();
+        }
+      }
+    } else {
+      startTime = new Date();
+    }
+
+    // Calculate initial violation count and remaining hours
+    let violationCount = 0;
+    let remainingHours = slaHours;
+
+    if (activityId) {
+      const activity = await this.activityRepository.findOne({
+        where: { id: activityId },
+      });
+      if (activity) {
+        const now = new Date();
+        // Cộng thêm 7 giờ vào now (điều chỉnh timezone UTC+7)
+        const nowWithOffset = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+        const elapsedHours =
+          (nowWithOffset.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+        const maxViolations = activity.maxViolations || 3;
+
+        // Calculate violations: each slaHours period is one violation
+        // Đảm bảo violationCount không bao giờ âm
+        violationCount = Math.max(
+          0,
+          Math.min(Math.floor(elapsedHours / slaHours), maxViolations)
+        );
+        // Tính remainingHours: SLA hours - số giờ đã trôi qua
+        // Lưu số thập phân để có thể hiển thị giờ:phút:giây chính xác
+        remainingHours = Math.max(0, slaHours - elapsedHours);
+      }
+    }
+
+    // Làm tròn đến 2 chữ số thập phân (để lưu vào numeric column)
+    const remainingHoursDecimal = Math.round(remainingHours * 100) / 100;
 
     const entity = this.recordRepository.create({
       recordId: payload.recordId,
@@ -161,13 +237,28 @@ export class RecordService {
       activityId,
       stepCode: payload.stepCode ?? null,
       stepName,
-      startTime: payload.startTime ? new Date(payload.startTime) : null,
-      status: payload.status ?? "waiting",
-      violationCount: payload.violationCount ?? 0,
-      slaHours: payload.slaHours ?? 24,
-      remainingHours: payload.remainingHours ?? 0,
+      startTime,
+      status: violationCount > 0 ? "violated" : payload.status ?? "waiting",
+      violationCount: payload.violationCount ?? violationCount,
+      slaHours,
+      remainingHours: payload.remainingHours ?? remainingHoursDecimal,
     });
-    return this.recordRepository.save(entity);
+
+    const savedRecord = await this.recordRepository.save(entity);
+
+    // If there are violations, handle the action immediately
+    if (violationCount > 0 && activityId) {
+      const activity = await this.activityRepository.findOne({
+        where: { id: activityId },
+      });
+      if (activity) {
+        // Import and use OdooService to handle violation action
+        // Note: This creates a circular dependency, so we'll handle it in cron job instead
+        // The cron job will check and handle violations periodically
+      }
+    }
+
+    return savedRecord;
   }
 
   async list(query: ListRecordsQuery) {
