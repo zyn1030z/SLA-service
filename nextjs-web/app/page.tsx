@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
 import {
@@ -14,22 +15,99 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useTranslation } from "@/lib/use-translation";
 
+const formatHoursToTime = (hours: number): string => {
+  const totalSeconds = Math.abs(Math.round(hours * 3600));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(
+    2,
+    "0"
+  )}:${String(s).padStart(2, "0")}`;
+};
+
+const formatDateTime = (dateInput: string | Date): string => {
+  const date = new Date(dateInput);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+type RecentViolationRecord = {
+  id: number;
+  recordId: string;
+  workflowName?: string | null;
+  stepName?: string | null;
+  stepCode?: string | null;
+  violationCount: number;
+  remainingHours?: number | null;
+  startTime?: string | Date | null;
+};
+
 export default function DashboardPage() {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [recentViolations, setRecentViolations] = useState<
+    RecentViolationRecord[]
+  >([]);
+
+  const fetchDashboardData = useCallback(async () => {
+    setLoading(true);
+    const defaultSummary = {
+      totalViolations: 0,
+      activeRecords: 0,
+      completedToday: 0,
+      successRate: 0,
+    };
+
+    try {
+      const base =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+
+      const [summaryResponse, recordsResponse] = await Promise.all([
+        axios
+          .get(`${base}/dashboard/summary`)
+          .catch((error) => {
+            console.error("Failed to load dashboard summary:", error);
+            return null;
+          }),
+        fetch("/api/records?status=violated&pageSize=5").catch((error) => {
+          console.error("Failed to load recent violations:", error);
+          return null;
+        }),
+      ]);
+
+      if (summaryResponse?.data) {
+        setSummary(summaryResponse.data);
+      } else {
+        setSummary(defaultSummary);
+      }
+
+      if (recordsResponse && recordsResponse.ok) {
+        const data = await recordsResponse.json();
+        setRecentViolations(data.items || []);
+      } else {
+        setRecentViolations([]);
+      }
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+      setSummary(defaultSummary);
+      setRecentViolations([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const base =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
-    axios
-      .get(`${base}/dashboard/summary`)
-      .then((r) => setSummary(r.data))
-      .catch(() =>
-        setSummary({ totalViolations: 0, activeRecords: 0, completedToday: 0 })
-      )
-      .finally(() => setLoading(false));
-  }, []);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   if (loading) {
     return (
@@ -50,7 +128,7 @@ export default function DashboardPage() {
           </h1>
           <p className="text-muted-foreground">{t("dashboard.subtitle")}</p>
         </div>
-        <Button>{t("common.refresh")}</Button>
+        <Button onClick={fetchDashboardData}>{t("common.refresh")}</Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -130,26 +208,58 @@ export default function DashboardPage() {
             <CardDescription>{t("dashboard.latestViolations")}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Purchase Order #12345</p>
-                  <p className="text-xs text-muted-foreground">
-                    Manager Approval
-                  </p>
-                </div>
-                <Badge variant="destructive">2 hours overdue</Badge>
+            {recentViolations.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("dashboard.noRecentViolations")}
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {recentViolations.map((record) => {
+                  const remaining = record.remainingHours ?? 0;
+                  const isOverdue = remaining < 0;
+                  const badgeLabel = isOverdue
+                    ? `${formatHoursToTime(remaining)} ${t("records.overdue")}`
+                    : `${formatHoursToTime(remaining)} ${t(
+                        "records.remaining"
+                      )}`;
+
+                  return (
+                    <div
+                      key={record.id}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {record.recordId}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {record.workflowName || "-"}
+                          {record.stepName
+                            ? ` • ${record.stepName}`
+                            : record.stepCode
+                            ? ` • ${record.stepCode}`
+                            : ""}
+                        </p>
+                        {record.startTime && (
+                          <p className="text-xs text-muted-foreground">
+                            {t("records.started")}:{" "}
+                            {formatDateTime(record.startTime)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={isOverdue ? "destructive" : "secondary"}>
+                          {badgeLabel}
+                        </Badge>
+                        <Badge variant="outline">
+                          {t("records.violations")}: {record.violationCount}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Expense Report #67890</p>
-                  <p className="text-xs text-muted-foreground">
-                    Finance Review
-                  </p>
-                </div>
-                <Badge variant="destructive">1 hour overdue</Badge>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -176,3 +286,4 @@ export default function DashboardPage() {
     </main>
   );
 }
+

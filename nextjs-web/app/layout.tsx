@@ -3,7 +3,7 @@ import "./globals.css";
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Home, Workflow, FileText, Globe } from "lucide-react";
+import { Home, Workflow, FileText, Globe, Bell } from "lucide-react";
 import { useTranslation } from "@/lib/use-translation";
 
 export default function RootLayout({
@@ -52,6 +52,12 @@ export default function RootLayout({
                   <Button variant="ghost" size="sm">
                     <FileText className="h-4 w-4 mr-2" />
                     {t("navigation.records")}
+                  </Button>
+                </Link>
+                <Link href="/sla-action-logs">
+                  <Button variant="ghost" size="sm">
+                    <Bell className="h-4 w-4 mr-2" />
+                    {t("navigation.slaLogs")}
                   </Button>
                 </Link>
                 <div className="flex items-center space-x-1 ml-4">

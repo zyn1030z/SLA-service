@@ -1,9 +1,17 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, LessThan } from "typeorm";
+import { Repository } from "typeorm";
 import { RecordEntity } from "../../entities/record.entity";
 import { ActivityEntity } from "../../entities/activity.entity";
 import { OdooService } from "../odoo/odoo.service";
+import { SlaActionLogEntity } from "../../entities/sla-action-log.entity";
+
+export interface ListActionLogsQuery {
+  page?: number;
+  pageSize?: number;
+  actionType?: "notify" | "auto_approve";
+  search?: string;
+}
 
 @Injectable()
 export class SlaTrackingService {
@@ -14,6 +22,8 @@ export class SlaTrackingService {
     private recordRepository: Repository<RecordEntity>,
     @InjectRepository(ActivityEntity)
     private activityRepository: Repository<ActivityEntity>,
+    @InjectRepository(SlaActionLogEntity)
+    private slaActionLogRepository: Repository<SlaActionLogEntity>,
     private odooService: OdooService
   ) {}
 
@@ -77,7 +87,8 @@ export class SlaTrackingService {
     }
 
     const oldViolationCount = record.violationCount || 0;
-    const newViolationCount = this.calculateViolations(record, activity);
+    // const newViolationCount = this.calculateViolations(record, activity);
+    const newViolationCount = 1;
 
     // update realtime
     record.remainingHours = this.calculateRemainingHours(record, activity);
@@ -153,14 +164,75 @@ export class SlaTrackingService {
     const violationAction = activity.violationAction || "notify";
 
     if (violationAction === "notify") {
-      // Gửi thông báo
-      await this.odooService.sendNotification(record, activity);
-    } else if (violationAction === "auto_approve") {
-      // Gửi yêu cầu phê duyệt tự động
-      await this.odooService.sendAutoApproval(
+      const success = await this.odooService.sendNotification(record, activity);
+      await this.saveActionLog({
         record,
         activity,
-        newViolationCount
+        actionType: "notify",
+        violationCount: newViolationCount,
+        isSuccess: success,
+        message: success
+          ? null
+          : "Notification API not configured or request failed",
+      });
+    } else if (violationAction === "auto_approve") {
+      const threshold = activity.maxViolations || 3;
+      if (newViolationCount >= threshold) {
+        const success = await this.odooService.sendAutoApproval(
+          record,
+          activity,
+          newViolationCount
+        );
+        await this.saveActionLog({
+          record,
+          activity,
+          actionType: "auto_approve",
+          violationCount: newViolationCount,
+          isSuccess: success,
+          message: success
+            ? null
+            : "Auto-approval API not configured or request failed",
+        });
+      } else {
+        // Chưa đạt ngưỡng vi phạm để tự động phê duyệt
+        await this.saveActionLog({
+          record,
+          activity,
+          actionType: "auto_approve",
+          violationCount: newViolationCount,
+          isSuccess: false,
+          message: `Auto-approval skipped: violationCount ${newViolationCount} < threshold ${threshold}`,
+        });
+      }
+    }
+  }
+
+  private async saveActionLog(params: {
+    record: RecordEntity;
+    activity: ActivityEntity | null;
+    actionType: "notify" | "auto_approve";
+    violationCount: number;
+    isSuccess: boolean;
+    message?: string | null;
+  }): Promise<void> {
+    const { record, activity, actionType, violationCount, isSuccess, message } =
+      params;
+
+    try {
+      const log = this.slaActionLogRepository.create({
+        recordId: record.recordId,
+        workflowId: record.workflowId ?? null,
+        activityId: activity?.id ?? null,
+        actionType,
+        violationCount,
+        isSuccess,
+        message: message ?? null,
+      });
+      await this.slaActionLogRepository.save(log);
+    } catch (error) {
+      this.logger.error(
+        `Failed to save SLA action log for record ${record.recordId}`,
+        error
       );
     }
   }
@@ -233,5 +305,48 @@ export class SlaTrackingService {
         status: "violated",
       },
     });
+  }
+
+  /**
+   * Danh sách log hành động SLA
+   */
+  async listActionLogs(query: ListActionLogsQuery) {
+    const page = Math.max(1, Number(query.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize || 20)));
+
+    const qb = this.slaActionLogRepository
+      .createQueryBuilder("log")
+      .orderBy("log.created_at", "DESC")
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+
+    if (query.actionType) {
+      qb.andWhere("log.action_type = :actionType", {
+        actionType: query.actionType,
+      });
+    }
+
+    if (query.search) {
+      const search = `%${query.search}%`;
+      qb.andWhere(
+        `(log.record_id ILIKE :search
+          OR COALESCE(log.message, '') ILIKE :search
+          OR log.action_type ILIKE :search
+          OR CAST(log.workflow_id AS TEXT) ILIKE :search
+          OR CAST(log.activity_id AS TEXT) ILIKE :search
+          OR CAST(log.violation_count AS TEXT) ILIKE :search
+          OR CAST(log.is_success AS TEXT) ILIKE :search)`,
+        { search }
+      );
+    }
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+    };
   }
 }

@@ -1,14 +1,20 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
 import axios, { AxiosInstance } from "axios";
 import { ActivityEntity } from "../../entities/activity.entity";
 import { RecordEntity } from "../../entities/record.entity";
+import { WorkflowEntity } from "../../entities/workflow.entity";
 
 @Injectable()
 export class OdooService {
   private readonly logger = new Logger(OdooService.name);
   private readonly axiosInstance: AxiosInstance;
 
-  constructor() {
+  constructor(
+    @InjectRepository(WorkflowEntity)
+    private readonly workflowRepository: Repository<WorkflowEntity>
+  ) {
     this.axiosInstance = axios.create({
       timeout: 10000,
     });
@@ -21,15 +27,28 @@ export class OdooService {
     record: RecordEntity,
     activity: ActivityEntity
   ): Promise<boolean> {
-    if (!activity.notifyApiConfig) {
-      this.logger.warn(
-        `No notification API config for activity ${activity.id}`
-      );
-      return false;
+    // Lấy config từ activity, nếu không có thì fallback về workflow
+    let config = activity.notifyApiConfig;
+    if (!config) {
+      if (!record.workflowId) {
+        this.logger.warn(
+          `No notification API config on activity ${activity.id} and record has no workflowId to fallback`
+        );
+        return false;
+      }
+      const workflow = await this.workflowRepository.findOne({
+        where: { id: record.workflowId },
+      });
+      config = workflow?.notifyApiConfig || null;
+      if (!config) {
+        this.logger.warn(
+          `No notification API config found for activity ${activity.id} and workflow ${record.workflowId}`
+        );
+        return false;
+      }
     }
 
     try {
-      const config = activity.notifyApiConfig;
       const body = this.replaceVariables(config.body || {}, record, activity);
 
       const response = await this.axiosInstance.request({
