@@ -88,21 +88,30 @@ export class SlaTrackingService {
 
     const oldViolationCount = record.violationCount || 0;
     const newViolationCount = this.calculateViolations(record, activity);
-    // const newViolationCount = 2;
+    // const newViolationCount = 3;
 
     // update realtime
     record.remainingHours = this.calculateRemainingHours(record, activity);
-    await this.recordRepository.save(record);
-
-    // update nextDueAt
-    // record.nextDueAt = new Date(record.startTime.getTime() + record.slaHours * 60 * 60 * 1000);
-    // await this.recordRepository.save(record);
+    if (record.startTime && record.slaHours) {
+      record.nextDueAt = new Date(
+        record.startTime.getTime() +
+          record.slaHours * (newViolationCount + 1) * 60 * 60 * 1000
+      );
+    }
 
     // Chỉ cập nhật nếu số lần vi phạm thay đổi
     if (newViolationCount > oldViolationCount) {
       record.violationCount = newViolationCount;
 
       record.remainingHours = this.calculateRemainingHours(record, activity);
+
+      // update nextDueAt dựa trên violationCount mới
+      if (record.startTime && record.slaHours) {
+        record.nextDueAt = new Date(
+          record.startTime.getTime() +
+            record.slaHours * (newViolationCount + 1) * 60 * 60 * 1000
+        );
+      }
 
       // Cập nhật status nếu vi phạm
       if (newViolationCount > 0 && record.status === "waiting") {
@@ -122,6 +131,14 @@ export class SlaTrackingService {
       this.logger.log(
         `Updated violations for record ${record.recordId}: ${oldViolationCount} -> ${newViolationCount}`
       );
+    } else {
+      if (record.startTime && record.slaHours) {
+        record.nextDueAt = new Date(
+          record.startTime.getTime() +
+            record.slaHours * (newViolationCount + 1) * 60 * 60 * 1000
+        );
+      }
+      await this.recordRepository.save(record);
     }
   }
 

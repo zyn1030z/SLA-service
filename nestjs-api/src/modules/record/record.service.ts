@@ -422,6 +422,10 @@ export class RecordService {
         );
       }
     }
+    // Nếu payload truyền status là "completed", cập nhật ngày phê duyệt (approvedAt) là ngày hiện tại
+    if (payload.status && payload.status === "completed") {
+      record.approvedAt = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    }
 
     if (incomingUserApprove !== undefined) {
       record.userApprove = incomingUserApprove ?? null;
