@@ -344,6 +344,8 @@ export default function RecordsPage() {
                     <TableHead>{t("records.timeRemaining")}</TableHead>
                     <TableHead>{t("records.started")}</TableHead>
                     <TableHead>{t("records.approvers")}</TableHead>
+                    <TableHead>{t("records.approvedAt")}</TableHead>
+                    <TableHead>{t("records.nextDueAt")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -352,7 +354,7 @@ export default function RecordsPage() {
                       {group.label && (
                         <TableRow>
                           <TableCell
-                            colSpan={8}
+                            colSpan={10}
                             className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                           >
                             {group.label}
@@ -404,6 +406,16 @@ export default function RecordsPage() {
                               ? record.userApprove
                                   .map((u: any) => u.name || u.login || u.id)
                                   .join(", ")
+                              : "-"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {record.approvedAt
+                              ? formatDateTime(record.approvedAt)
+                              : "-"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {record.nextDueAt
+                              ? formatDateTime(record.nextDueAt)
                               : "-"}
                           </TableCell>
                         </TableRow>

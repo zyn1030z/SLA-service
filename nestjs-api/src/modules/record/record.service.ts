@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, FindOptionsWhere } from "typeorm";
 import { RecordEntity } from "../../entities/record.entity";
@@ -24,6 +28,7 @@ export interface CreateRecordDto {
   workflowName?: string | null;
   stepCode?: string | null;
   stepName?: string | null;
+  activityId?: number | null;
   startTime?: string | Date | null;
   status?: "waiting" | "violated" | "completed";
   violationCount?: number;
@@ -34,6 +39,14 @@ export interface CreateRecordDto {
     name: string;
     login: string;
   }>;
+}
+
+export interface UpdateRecordDto extends Partial<CreateRecordDto> {
+  user_approve?: Array<{
+    id: number;
+    name: string;
+    login: string;
+  }> | null;
 }
 
 @Injectable()
@@ -231,12 +244,20 @@ export class RecordService {
         );
         // Tính remainingHours: SLA hours - số giờ đã trôi qua
         // Lưu số thập phân để có thể hiển thị giờ:phút:giây chính xác
-        remainingHours = Math.max(0, slaHours - elapsedHours);
+        remainingHours = Math.max(
+          0,
+          slaHours * (violationCount + 1) - elapsedHours
+        );
       }
     }
 
     // Làm tròn đến 2 chữ số thập phân (để lưu vào numeric column)
     const remainingHoursDecimal = Math.round(remainingHours * 100) / 100;
+
+    // Tính nextDueAt = startTime + slaHours
+    const nextDueAt = new Date(
+      startTime.getTime() + slaHours * (violationCount + 1) * 60 * 60 * 1000
+    );
 
     const entity = this.recordRepository.create({
       recordId: payload.recordId,
@@ -253,6 +274,7 @@ export class RecordService {
       slaHours,
       remainingHours: payload.remainingHours ?? remainingHoursDecimal,
       userApprove: incomingUserApprove ?? null,
+      nextDueAt,
     });
 
     const savedRecord = await this.recordRepository.save(entity);
@@ -269,6 +291,143 @@ export class RecordService {
       }
     }
 
+    return savedRecord;
+  }
+
+  async update(id: number, payload: UpdateRecordDto): Promise<RecordEntity> {
+    const record = await this.recordRepository.findOne({ where: { id } });
+    if (!record) {
+      throw new NotFoundException(`Record with id=${id} not found`);
+    }
+
+    const anyPayload = payload as any;
+    const incomingUserApprove = payload.userApprove ?? anyPayload.user_approve;
+
+    // Update workflow/system if provided
+    let workflow: WorkflowEntity | null = null;
+    if (payload.odooWorkflowId) {
+      if (!this.isPositiveInt(payload.odooWorkflowId)) {
+        throw new BadRequestException(
+          `odooWorkflowId must be a positive integer. Received: ${payload.odooWorkflowId}`
+        );
+      }
+      workflow = await this.workflowRepository.findOne({
+        where: { odooWorkflowId: payload.odooWorkflowId },
+      });
+      if (!workflow) {
+        throw new BadRequestException(
+          `Workflow not found for odooWorkflowId=${payload.odooWorkflowId}`
+        );
+      }
+      record.workflowId = workflow.id;
+      record.systemId = workflow.systemId;
+      record.workflowName =
+        payload.workflowName ?? workflow.workflowName ?? record.workflowName;
+    } else if (payload.workflowId && payload.systemId) {
+      if (!this.isPositiveInt(payload.workflowId)) {
+        throw new BadRequestException(
+          `workflowId must be a positive integer. Received: ${payload.workflowId}`
+        );
+      }
+      if (!this.isPositiveInt(payload.systemId)) {
+        throw new BadRequestException(
+          `systemId must be a positive integer. Received: ${payload.systemId}`
+        );
+      }
+      const [system, foundWorkflow] = await Promise.all([
+        this.systemRepository.findOne({ where: { id: payload.systemId } }),
+        this.workflowRepository.findOne({ where: { id: payload.workflowId } }),
+      ]);
+      if (!system) {
+        throw new BadRequestException(
+          `System not found for systemId=${payload.systemId}`
+        );
+      }
+      if (!foundWorkflow) {
+        throw new BadRequestException(
+          `Workflow not found for workflowId=${payload.workflowId}`
+        );
+      }
+      workflow = foundWorkflow;
+      record.systemId = payload.systemId;
+      record.workflowId = payload.workflowId;
+      record.workflowName =
+        payload.workflowName ?? workflow.workflowName ?? record.workflowName;
+    } else if (payload.workflowName) {
+      record.workflowName = payload.workflowName;
+    }
+
+    if (payload.recordId) record.recordId = payload.recordId;
+    if (payload.model) record.model = payload.model;
+    if (payload.stepCode !== undefined)
+      record.stepCode = payload.stepCode ?? null;
+    if (payload.stepName !== undefined)
+      record.stepName = payload.stepName ?? null;
+
+    if (payload.stepCode && record.workflowId) {
+      const activity = await this.activityRepository.findOne({
+        where: { workflowId: record.workflowId, code: payload.stepCode },
+      });
+      if (activity) {
+        record.activityId = activity.id;
+        if (!payload.stepName) {
+          record.stepName = activity.name;
+        }
+      }
+    }
+
+    if (payload.activityId !== undefined) {
+      record.activityId = payload.activityId;
+    }
+
+    if (payload.startTime) {
+      const timeStr = String(payload.startTime).trim();
+      let startTime: Date;
+      if (timeStr.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+        const [datePart, timePart] = timeStr.split(" ");
+        const [year, month, day] = datePart.split("-").map(Number);
+        const [hours, minutes, seconds] = timePart.split(":").map(Number);
+        startTime = new Date(
+          Date.UTC(year, month - 1, day, hours, minutes, seconds || 0)
+        );
+      } else {
+        startTime = new Date(payload.startTime);
+      }
+      if (isNaN(startTime.getTime())) {
+        throw new BadRequestException(
+          `Invalid startTime: ${payload.startTime}`
+        );
+      }
+      record.startTime = startTime;
+    }
+
+    if (payload.status) record.status = payload.status;
+    if (payload.violationCount !== undefined)
+      record.violationCount = payload.violationCount;
+
+    const startTimeChanged = payload.startTime !== undefined;
+    const slaHoursChanged = payload.slaHours !== undefined;
+
+    if (payload.slaHours !== undefined) record.slaHours = payload.slaHours;
+    if (payload.remainingHours !== undefined)
+      record.remainingHours = payload.remainingHours;
+
+    // Tự động tính lại nextDueAt nếu startTime hoặc slaHours thay đổi
+    if (startTimeChanged || slaHoursChanged) {
+      const currentStartTime = record.startTime;
+      const currentSlaHours = record.slaHours;
+      if (currentStartTime && currentSlaHours) {
+        record.nextDueAt = new Date(
+          currentStartTime.getTime() + currentSlaHours * 60 * 60 * 1000
+        );
+      }
+    }
+
+    if (incomingUserApprove !== undefined) {
+      record.userApprove = incomingUserApprove ?? null;
+    }
+
+    const savedRecord = await this.recordRepository.save(record);
     return savedRecord;
   }
 

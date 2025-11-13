@@ -3,7 +3,10 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  ParseIntPipe,
   Post,
+  Put,
   Query,
 } from "@nestjs/common";
 import {
@@ -14,7 +17,11 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
-import { CreateRecordDto, RecordService } from "./record.service";
+import {
+  CreateRecordDto,
+  RecordService,
+  UpdateRecordDto,
+} from "./record.service";
 
 class CreateRecordRequestDto {
   recordId!: string;
@@ -105,6 +112,21 @@ export class RecordController {
       );
     }
     const record = await this.recordService.create(body);
+    return { success: true, record };
+  }
+
+  @Public()
+  @Put(":id")
+  @ApiOperation({ summary: "Update a record" })
+  @ApiResponse({ status: 200, description: "Record updated" })
+  async update(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() body: UpdateRecordDto
+  ) {
+    if (Object.keys(body).length === 0) {
+      throw new BadRequestException("Request body cannot be empty");
+    }
+    const record = await this.recordService.update(id, body);
     return { success: true, record };
   }
 }

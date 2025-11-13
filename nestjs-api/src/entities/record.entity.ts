@@ -78,6 +78,12 @@ export class RecordEntity {
   @UpdateDateColumn({ name: "updated_at" })
   updatedAt!: Date;
 
+  @Column({ name: "approved_at", type: "timestamptz", nullable: true })
+  approvedAt!: Date | null;
+
+  @Column({ name: "next_due_at", type: "timestamptz", nullable: true })
+  nextDueAt!: Date | null;
+
   // Relations
   @ManyToOne(() => WorkflowEntity, {
     nullable: true,

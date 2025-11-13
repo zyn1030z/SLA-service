@@ -87,12 +87,16 @@ export class SlaTrackingService {
     }
 
     const oldViolationCount = record.violationCount || 0;
-    // const newViolationCount = this.calculateViolations(record, activity);
-    const newViolationCount = 1;
+    const newViolationCount = this.calculateViolations(record, activity);
+    // const newViolationCount = 2;
 
     // update realtime
     record.remainingHours = this.calculateRemainingHours(record, activity);
     await this.recordRepository.save(record);
+
+    // update nextDueAt
+    // record.nextDueAt = new Date(record.startTime.getTime() + record.slaHours * 60 * 60 * 1000);
+    // await this.recordRepository.save(record);
 
     // Chỉ cập nhật nếu số lần vi phạm thay đổi
     if (newViolationCount > oldViolationCount) {
@@ -135,12 +139,17 @@ export class SlaTrackingService {
     const now = new Date();
     // Cộng thêm 7 giờ vào now (điều chỉnh timezone UTC+7)
     const nowWithOffset = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const nextDueAt = new Date(
+      record.startTime.getTime() +
+        record.slaHours * (record.violationCount + 1) * 60 * 60 * 1000
+    );
     const startTime = new Date(record.startTime);
     const elapsedHours =
-      (nowWithOffset.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+      (nextDueAt.getTime() - nowWithOffset.getTime()) / (1000 * 60 * 60);
 
     const slaHours = activity.slaHours || record.slaHours || 24;
-    const remaining = slaHours - elapsedHours;
+    // const remaining = slaHours - elapsedHours;
+    const remaining = elapsedHours;
 
     // Làm tròn đến 2 chữ số thập phân (để lưu vào numeric column)
     // Nếu âm quá nhiều, giới hạn ở -999 để tránh overflow
