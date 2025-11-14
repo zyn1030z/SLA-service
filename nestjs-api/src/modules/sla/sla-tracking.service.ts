@@ -39,11 +39,35 @@ export class SlaTrackingService {
   }
 
   /**
-   * Kiểm tra xem thời gian có nằm trong giờ hành chính (8h-17h) không
+   * Kiểm tra xem có phải ngày làm việc (thứ 2 - thứ 6) không
+   */
+  private isBusinessDay(date: Date): boolean {
+    const day = date.getUTCDay(); // 0: Chủ nhật, 6: Thứ bảy
+    return day >= 1 && day <= 5;
+  }
+
+  /**
+   * Di chuyển đến 8h sáng của ngày làm việc tiếp theo
+   */
+  private moveToNextBusinessDay(date: Date): Date {
+    const next = new Date(date);
+    do {
+      next.setUTCDate(next.getUTCDate() + 1);
+    } while (!this.isBusinessDay(next));
+    next.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+    return next;
+  }
+
+  /**
+   * Kiểm tra xem thời gian có nằm trong giờ hành chính (8h-17h, thứ 2 - 6) không
    */
   private isBusinessHours(date: Date): boolean {
     const hour = date.getUTCHours();
-    return hour >= this.BUSINESS_START_HOUR && hour < this.BUSINESS_END_HOUR;
+    return (
+      this.isBusinessDay(date) &&
+      hour >= this.BUSINESS_START_HOUR &&
+      hour < this.BUSINESS_END_HOUR
+    );
   }
 
   /**
@@ -51,7 +75,7 @@ export class SlaTrackingService {
    * Nếu đã qua 17h, đưa về 8h sáng ngày hôm sau
    */
   private normalizeToBusinessStart(date: Date): Date {
-    const normalized = new Date(date);
+    let normalized = new Date(date);
     const hour = normalized.getUTCHours();
 
     if (hour < this.BUSINESS_START_HOUR) {
@@ -59,11 +83,15 @@ export class SlaTrackingService {
       normalized.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
     } else if (hour >= this.BUSINESS_END_HOUR) {
       // Sau 17h, đưa về 8h sáng ngày hôm sau
-      normalized.setUTCDate(normalized.getUTCDate() + 1);
-      normalized.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      normalized = this.moveToNextBusinessDay(normalized);
+      return normalized;
     } else {
       // Trong giờ hành chính, giữ nguyên giờ nhưng reset phút/giây
       normalized.setUTCMinutes(0, 0, 0);
+    }
+
+    if (!this.isBusinessDay(normalized)) {
+      normalized = this.moveToNextBusinessDay(normalized);
     }
 
     return normalized;
@@ -82,18 +110,19 @@ export class SlaTrackingService {
 
     // Nếu start nằm ngoài giờ hành chính, đưa về đầu giờ hành chính gần nhất
     if (!this.isBusinessHours(start)) {
-      const hour = current.getUTCHours();
-      if (hour < this.BUSINESS_START_HOUR) {
-        // Trước 8h sáng, đưa về 8h sáng cùng ngày
-        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
-      } else if (hour >= this.BUSINESS_END_HOUR) {
-        // Sau 17h, đưa về 8h sáng ngày hôm sau
-        current.setUTCDate(current.getUTCDate() + 1);
-        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
-      }
+      current = this.normalizeToBusinessStart(start);
+    }
+
+    while (!this.isBusinessDay(current)) {
+      current = this.moveToNextBusinessDay(current);
     }
 
     while (current < end) {
+      if (!this.isBusinessDay(current)) {
+        current = this.moveToNextBusinessDay(current);
+        continue;
+      }
+
       // Tính thời điểm kết thúc giờ hành chính trong ngày hiện tại
       const currentDay = new Date(current);
       currentDay.setUTCHours(0, 0, 0, 0);
@@ -120,8 +149,7 @@ export class SlaTrackingService {
         totalHours += hoursToEndOfDay + minutesToEndOfDay;
 
         // Chuyển sang 8h sáng ngày hôm sau
-        current.setUTCDate(current.getUTCDate() + 1);
-        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+        current = this.moveToNextBusinessDay(current);
       }
     }
 
@@ -140,6 +168,7 @@ export class SlaTrackingService {
   ): Date {
     let current: Date;
     let remainingSlaHours = slaHours * (violationCount + 1);
+    // let remainingSlaHours = slaHours * violationCount;
 
     // Nếu startTime nằm trong giờ hành chính, kiểm tra xem có đủ thời gian không
     if (this.isBusinessHours(startTime)) {
@@ -155,10 +184,8 @@ export class SlaTrackingService {
       if (hoursUntilEndOfDay < remainingSlaHours) {
         // Không đủ thời gian trong ngày, tính đến 17h + thời gian từ 8h sáng hôm sau
         remainingSlaHours -= hoursUntilEndOfDay;
-        // Chuyển sang 8h sáng ngày hôm sau
-        current = new Date(endOfDay);
-        current.setUTCDate(current.getUTCDate() + 1);
-        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+        // Chuyển sang 8h sáng ngày làm việc kế tiếp
+        current = this.moveToNextBusinessDay(endOfDay);
       } else {
         // Đủ thời gian trong ngày, bắt đầu từ startTime
         current = new Date(startTime);
@@ -179,9 +206,8 @@ export class SlaTrackingService {
       remainingSlaHours -= hoursInCurrentDay;
 
       if (remainingSlaHours > 0) {
-        // Chưa hết SLA, chuyển sang 8h sáng ngày hôm sau
-        current.setUTCDate(current.getUTCDate() + 1);
-        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+        // Chưa hết SLA, chuyển sang 8h sáng ngày làm việc kế tiếp
+        current = this.moveToNextBusinessDay(current);
       }
     }
 
@@ -202,13 +228,14 @@ export class SlaTrackingService {
     const maxViolations = activity.maxViolations || 3;
 
     // Tính số giờ hành chính đã trôi qua từ startTime đến now
-    const elapsedBusinessHours = this.calculateBusinessHoursBetween(
-      startTime,
-      nowWithOffset
-    );
+    // const elapsedBusinessHours = this.calculateBusinessHoursBetween(
+    //   startTime,
+    //   nowWithOffset
+    // );
 
     // Tính số lần vi phạm: mỗi slaHours là 1 lần vi phạm
     // Đảm bảo violations không bao giờ âm
+    const elapsedBusinessHours = 29;
     const violations = Math.max(0, Math.floor(elapsedBusinessHours / slaHours));
 
     // Giới hạn số lần vi phạm tối đa
@@ -255,11 +282,15 @@ export class SlaTrackingService {
     // update realtime
     record.remainingHours = this.calculateRemainingHours(record, activity);
     if (record.startTime && record.slaHours) {
-      record.nextDueAt = this.calculateNextDueAt(
-        record.startTime,
-        slaHours,
-        newViolationCount
-      );
+      if (record.violationCount === activity.maxViolations) {
+        record.nextDueAt = null;
+      } else {
+        record.nextDueAt = this.calculateNextDueAt(
+          record.startTime,
+          slaHours,
+          newViolationCount
+        );
+      }
     }
 
     // Chỉ cập nhật nếu số lần vi phạm thay đổi
@@ -297,11 +328,15 @@ export class SlaTrackingService {
       );
     } else {
       if (record.startTime && record.slaHours) {
-        record.nextDueAt = this.calculateNextDueAt(
-          record.startTime,
-          slaHours,
-          newViolationCount
-        );
+        if (record.violationCount === activity.maxViolations) {
+          record.nextDueAt = null;
+        } else {
+          record.nextDueAt = this.calculateNextDueAt(
+            record.startTime,
+            slaHours,
+            newViolationCount
+          );
+        }
       }
       await this.recordRepository.save(record);
     }
@@ -383,7 +418,7 @@ export class SlaTrackingService {
           isSuccess: success,
           message: success
             ? null
-            : "Auto-approval API not configured or request failed",
+            : "Tự động phê duyệt: API không được cấu hình hoặc yêu cầu thất bại",
         });
       } else {
         // Chưa đạt ngưỡng vi phạm để tự động phê duyệt
@@ -393,7 +428,22 @@ export class SlaTrackingService {
           actionType: "auto_approve",
           violationCount: newViolationCount,
           isSuccess: false,
-          message: `Auto-approval skipped: violationCount ${newViolationCount} < threshold ${threshold}`,
+          message: `Bỏ qua tự động phê duyệt: số lần vi phạm ${newViolationCount} < ngưỡng ${threshold}`,
+        });
+        // Với mỗi lần quá hạn vẫn gửi notification như trường hợp 'notify'
+        const success = await this.odooService.sendNotification(
+          record,
+          activity
+        );
+        await this.saveActionLog({
+          record,
+          activity,
+          actionType: "notify",
+          violationCount: newViolationCount,
+          isSuccess: success,
+          message: success
+            ? null
+            : "Gửi thông báo vi phạm: API không được cấu hình hoặc yêu cầu thất bại",
         });
       }
     }

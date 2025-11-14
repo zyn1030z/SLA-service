@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   FileText,
 } from "lucide-react";
+import { CountdownTimer } from "@/components/CountdownTimer";
 
 export default function RecordsPage() {
   const { t } = useTranslation();
@@ -167,6 +168,7 @@ export default function RecordsPage() {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   };
 
+  // Keep getRemainingTime for backward compatibility in other tabs
   const getRemainingTime = (remainingHours: number) => {
     if (remainingHours < 0) {
       const timeStr = formatHoursToTime(remainingHours);
@@ -395,7 +397,10 @@ export default function RecordsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {getRemainingTime(record.remainingHours)}
+                            <CountdownTimer
+                              nextDueAt={record.nextDueAt}
+                              status={record.status}
+                            />
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDateTime(record.startTime)}
@@ -487,7 +492,10 @@ export default function RecordsPage() {
                         <TableCell>{record.workflowName}</TableCell>
                         <TableCell>{record.stepName}</TableCell>
                         <TableCell>
-                          {getRemainingTime(record.remainingHours)}
+                          <CountdownTimer
+                            nextDueAt={record.nextDueAt}
+                            status={record.status}
+                          />
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDateTime(record.startTime)}

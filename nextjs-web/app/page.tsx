@@ -21,10 +21,9 @@ const formatHoursToTime = (hours: number): string => {
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
 
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(
-    2,
-    "0"
-  )}:${String(s).padStart(2, "0")}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(
+    s
+  ).padStart(2, "0")}`;
 };
 
 const formatDateTime = (dateInput: string | Date): string => {
@@ -72,12 +71,10 @@ export default function DashboardPage() {
         process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
 
       const [summaryResponse, recordsResponse] = await Promise.all([
-        axios
-          .get(`${base}/dashboard/summary`)
-          .catch((error) => {
-            console.error("Failed to load dashboard summary:", error);
-            return null;
-          }),
+        axios.get(`${base}/dashboard/summary`).catch((error) => {
+          console.error("Failed to load dashboard summary:", error);
+          return null;
+        }),
         fetch("/api/records?status=violated&pageSize=5").catch((error) => {
           console.error("Failed to load recent violations:", error);
           return null;
@@ -229,9 +226,7 @@ export default function DashboardPage() {
                       className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                     >
                       <div className="space-y-1">
-                        <p className="text-sm font-medium">
-                          {record.recordId}
-                        </p>
+                        <p className="text-sm font-medium">{record.recordId}</p>
                         <p className="text-xs text-muted-foreground">
                           {record.workflowName || "-"}
                           {record.stepName
@@ -248,7 +243,9 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge variant={isOverdue ? "destructive" : "secondary"}>
+                        <Badge
+                          variant={isOverdue ? "destructive" : "secondary"}
+                        >
                           {badgeLabel}
                         </Badge>
                         <Badge variant="outline">
@@ -286,4 +283,3 @@ export default function DashboardPage() {
     </main>
   );
 }
-
