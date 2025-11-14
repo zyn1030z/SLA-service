@@ -9,6 +9,7 @@ import { RecordEntity } from "../../entities/record.entity";
 import { WorkflowEntity } from "../../entities/workflow.entity";
 import { SystemEntity } from "../../entities/system.entity";
 import { ActivityEntity } from "../../entities/activity.entity";
+import { SlaTrackingService } from "../sla/sla-tracking.service";
 
 export interface ListRecordsQuery {
   page?: number;
@@ -59,7 +60,8 @@ export class RecordService {
     @InjectRepository(SystemEntity)
     private systemRepository: Repository<SystemEntity>,
     @InjectRepository(ActivityEntity)
-    private activityRepository: Repository<ActivityEntity>
+    private activityRepository: Repository<ActivityEntity>,
+    private slaTrackingService: SlaTrackingService
   ) {}
 
   private isPositiveInt(value: unknown): boolean {
@@ -144,7 +146,7 @@ export class RecordService {
     }
 
     // Use workflowName from workflow if not provided
-    const workflowName = payload.workflowName ?? workflow.workflowName ?? null;
+    const workflowName = payload.workflowName ?? workflow?.workflowName ?? null;
 
     // Find activity from stepCode if provided
     let activityId: number | null = null;
@@ -220,7 +222,7 @@ export class RecordService {
       startTime = new Date();
     }
 
-    // Calculate initial violation count and remaining hours
+    // Calculate initial violation count and remaining hours (theo giờ hành chính)
     let violationCount = 0;
     let remainingHours = slaHours;
 
@@ -229,34 +231,44 @@ export class RecordService {
         where: { id: activityId },
       });
       if (activity) {
-        const now = new Date();
-        // Cộng thêm 7 giờ vào now (điều chỉnh timezone UTC+7)
-        const nowWithOffset = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-        const elapsedHours =
-          (nowWithOffset.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-        const maxViolations = activity.maxViolations || 3;
+        // Tính số lần vi phạm theo giờ hành chính
+        const tempRecord: Partial<RecordEntity> = {
+          startTime,
+          slaHours,
+          status: "waiting",
+          violationCount: 0,
+        };
+        violationCount = this.slaTrackingService.calculateViolations(
+          tempRecord as RecordEntity,
+          activity
+        );
 
-        // Calculate violations: each slaHours period is one violation
-        // Đảm bảo violationCount không bao giờ âm
-        violationCount = Math.max(
-          0,
-          Math.min(Math.floor(elapsedHours / slaHours), maxViolations)
+        // Tính nextDueAt theo giờ hành chính
+        const nextDueAt = this.slaTrackingService.calculateNextDueAt(
+          startTime,
+          slaHours,
+          violationCount
         );
-        // Tính remainingHours: SLA hours - số giờ đã trôi qua
-        // Lưu số thập phân để có thể hiển thị giờ:phút:giây chính xác
-        remainingHours = Math.max(
-          0,
-          slaHours * (violationCount + 1) - elapsedHours
+
+        // Tính remainingHours: số giờ hành chính còn lại từ now đến nextDueAt
+        const now = new Date();
+        const nowWithOffset = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+        remainingHours = this.slaTrackingService.calculateBusinessHoursBetween(
+          nowWithOffset,
+          nextDueAt
         );
+        remainingHours = Math.max(0, remainingHours);
       }
     }
 
     // Làm tròn đến 2 chữ số thập phân (để lưu vào numeric column)
     const remainingHoursDecimal = Math.round(remainingHours * 100) / 100;
 
-    // Tính nextDueAt = startTime + slaHours
-    const nextDueAt = new Date(
-      startTime.getTime() + slaHours * (violationCount + 1) * 60 * 60 * 1000
+    // Tính nextDueAt theo giờ hành chính
+    const nextDueAt = this.slaTrackingService.calculateNextDueAt(
+      startTime,
+      slaHours,
+      violationCount
     );
 
     const entity = this.recordRepository.create({
@@ -352,7 +364,7 @@ export class RecordService {
       record.systemId = payload.systemId;
       record.workflowId = payload.workflowId;
       record.workflowName =
-        payload.workflowName ?? workflow.workflowName ?? record.workflowName;
+        payload.workflowName ?? workflow?.workflowName ?? record.workflowName;
     } else if (payload.workflowName) {
       record.workflowName = payload.workflowName;
     }
@@ -412,13 +424,15 @@ export class RecordService {
     if (payload.remainingHours !== undefined)
       record.remainingHours = payload.remainingHours;
 
-    // Tự động tính lại nextDueAt nếu startTime hoặc slaHours thay đổi
+    // Tự động tính lại nextDueAt nếu startTime hoặc slaHours thay đổi (theo giờ hành chính)
     if (startTimeChanged || slaHoursChanged) {
       const currentStartTime = record.startTime;
       const currentSlaHours = record.slaHours;
       if (currentStartTime && currentSlaHours) {
-        record.nextDueAt = new Date(
-          currentStartTime.getTime() + currentSlaHours * 60 * 60 * 1000
+        record.nextDueAt = this.slaTrackingService.calculateNextDueAt(
+          currentStartTime,
+          currentSlaHours,
+          record.violationCount || 0
         );
       }
     }

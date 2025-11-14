@@ -16,6 +16,9 @@ export interface ListActionLogsQuery {
 @Injectable()
 export class SlaTrackingService {
   private readonly logger = new Logger(SlaTrackingService.name);
+  private readonly BUSINESS_START_HOUR = 8; // 8h
+  private readonly BUSINESS_END_HOUR = 17; // 17h
+  private readonly BUSINESS_HOURS_PER_DAY = 9; // 17 - 8 = 9 giờ
 
   constructor(
     @InjectRepository(RecordEntity)
@@ -28,26 +31,185 @@ export class SlaTrackingService {
   ) {}
 
   /**
-   * Tính toán số lần vi phạm SLA cho một record
+   * Lấy thời gian hiện tại với timezone UTC+7
+   */
+  private getNowWithOffset(): Date {
+    const now = new Date();
+    return new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  }
+
+  /**
+   * Kiểm tra xem thời gian có nằm trong giờ hành chính (8h-17h) không
+   */
+  private isBusinessHours(date: Date): boolean {
+    const hour = date.getUTCHours();
+    return hour >= this.BUSINESS_START_HOUR && hour < this.BUSINESS_END_HOUR;
+  }
+
+  /**
+   * Đưa thời gian về đầu giờ hành chính gần nhất (8h sáng)
+   * Nếu đã qua 17h, đưa về 8h sáng ngày hôm sau
+   */
+  private normalizeToBusinessStart(date: Date): Date {
+    const normalized = new Date(date);
+    const hour = normalized.getUTCHours();
+
+    if (hour < this.BUSINESS_START_HOUR) {
+      // Trước 8h sáng, đưa về 8h sáng cùng ngày
+      normalized.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+    } else if (hour >= this.BUSINESS_END_HOUR) {
+      // Sau 17h, đưa về 8h sáng ngày hôm sau
+      normalized.setUTCDate(normalized.getUTCDate() + 1);
+      normalized.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+    } else {
+      // Trong giờ hành chính, giữ nguyên giờ nhưng reset phút/giây
+      normalized.setUTCMinutes(0, 0, 0);
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Tính số giờ hành chính giữa hai thời điểm
+   */
+  public calculateBusinessHoursBetween(start: Date, end: Date): number {
+    if (end <= start) {
+      return 0;
+    }
+
+    let current = new Date(start);
+    let totalHours = 0;
+
+    // Nếu start nằm ngoài giờ hành chính, đưa về đầu giờ hành chính gần nhất
+    if (!this.isBusinessHours(start)) {
+      const hour = current.getUTCHours();
+      if (hour < this.BUSINESS_START_HOUR) {
+        // Trước 8h sáng, đưa về 8h sáng cùng ngày
+        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      } else if (hour >= this.BUSINESS_END_HOUR) {
+        // Sau 17h, đưa về 8h sáng ngày hôm sau
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      }
+    }
+
+    while (current < end) {
+      // Tính thời điểm kết thúc giờ hành chính trong ngày hiện tại
+      const currentDay = new Date(current);
+      currentDay.setUTCHours(0, 0, 0, 0);
+      const endOfBusinessDay = new Date(currentDay);
+      endOfBusinessDay.setUTCHours(this.BUSINESS_END_HOUR, 0, 0, 0);
+
+      if (end <= endOfBusinessDay) {
+        // End nằm trong cùng ngày, tính số giờ còn lại
+        const hoursInDay = Math.max(
+          0,
+          end.getUTCHours() - current.getUTCHours()
+        );
+        const minutesInDay =
+          (end.getUTCMinutes() - current.getUTCMinutes()) / 60;
+        totalHours += Math.max(0, hoursInDay + minutesInDay);
+        break;
+      } else {
+        // Tính số giờ từ current đến 17h cùng ngày
+        const hoursToEndOfDay = Math.max(
+          0,
+          this.BUSINESS_END_HOUR - current.getUTCHours()
+        );
+        const minutesToEndOfDay = (60 - current.getUTCMinutes()) / 60;
+        totalHours += hoursToEndOfDay + minutesToEndOfDay;
+
+        // Chuyển sang 8h sáng ngày hôm sau
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      }
+    }
+
+    return totalHours;
+  }
+
+  /**
+   * Tính thời điểm đến hạn tiếp theo dựa trên startTime và số giờ SLA
+   * Nếu thời gian đẩy lên trong khung 8h-17h mà chưa đủ thời gian SLA,
+   * thì tính đến 17h + thời gian SLA từ 8h sáng hôm sau
+   */
+  public calculateNextDueAt(
+    startTime: Date,
+    slaHours: number,
+    violationCount: number = 0
+  ): Date {
+    let current: Date;
+    let remainingSlaHours = slaHours * (violationCount + 1);
+
+    // Nếu startTime nằm trong giờ hành chính, kiểm tra xem có đủ thời gian không
+    if (this.isBusinessHours(startTime)) {
+      // Tính thời điểm kết thúc giờ hành chính trong ngày
+      const startDay = new Date(startTime);
+      startDay.setUTCHours(0, 0, 0, 0);
+      const endOfDay = new Date(startDay);
+      endOfDay.setUTCHours(this.BUSINESS_END_HOUR, 0, 0, 0);
+
+      const hoursUntilEndOfDay =
+        (endOfDay.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+
+      if (hoursUntilEndOfDay < remainingSlaHours) {
+        // Không đủ thời gian trong ngày, tính đến 17h + thời gian từ 8h sáng hôm sau
+        remainingSlaHours -= hoursUntilEndOfDay;
+        // Chuyển sang 8h sáng ngày hôm sau
+        current = new Date(endOfDay);
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      } else {
+        // Đủ thời gian trong ngày, bắt đầu từ startTime
+        current = new Date(startTime);
+      }
+    } else {
+      // StartTime nằm ngoài giờ hành chính, đưa về đầu giờ hành chính gần nhất
+      current = this.normalizeToBusinessStart(startTime);
+    }
+
+    // Tính thời điểm đến hạn bằng cách cộng dần số giờ hành chính còn lại
+    while (remainingSlaHours > 0) {
+      const hoursInCurrentDay = Math.min(
+        remainingSlaHours,
+        this.BUSINESS_END_HOUR - current.getUTCHours()
+      );
+
+      current.setUTCHours(current.getUTCHours() + hoursInCurrentDay);
+      remainingSlaHours -= hoursInCurrentDay;
+
+      if (remainingSlaHours > 0) {
+        // Chưa hết SLA, chuyển sang 8h sáng ngày hôm sau
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      }
+    }
+
+    return current;
+  }
+
+  /**
+   * Tính toán số lần vi phạm SLA cho một record (theo giờ hành chính)
    */
   calculateViolations(record: RecordEntity, activity: ActivityEntity): number {
     if (!record.startTime || record.status === "completed") {
       return record.violationCount || 0;
     }
 
-    const now = new Date();
-    // Cộng thêm 7 giờ vào now (điều chỉnh timezone UTC+7)
-    const nowWithOffset = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const nowWithOffset = this.getNowWithOffset();
     const startTime = new Date(record.startTime);
-    const elapsedHours =
-      (nowWithOffset.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
     const slaHours = activity.slaHours || record.slaHours || 24;
     const maxViolations = activity.maxViolations || 3;
 
+    // Tính số giờ hành chính đã trôi qua từ startTime đến now
+    const elapsedBusinessHours = this.calculateBusinessHoursBetween(
+      startTime,
+      nowWithOffset
+    );
+
     // Tính số lần vi phạm: mỗi slaHours là 1 lần vi phạm
     // Đảm bảo violations không bao giờ âm
-    const violations = Math.max(0, Math.floor(elapsedHours / slaHours));
+    const violations = Math.max(0, Math.floor(elapsedBusinessHours / slaHours));
 
     // Giới hạn số lần vi phạm tối đa
     return Math.min(violations, maxViolations);
@@ -88,14 +250,15 @@ export class SlaTrackingService {
 
     const oldViolationCount = record.violationCount || 0;
     const newViolationCount = this.calculateViolations(record, activity);
-    // const newViolationCount = 3;
+    const slaHours = activity.slaHours || record.slaHours || 24;
 
     // update realtime
     record.remainingHours = this.calculateRemainingHours(record, activity);
     if (record.startTime && record.slaHours) {
-      record.nextDueAt = new Date(
-        record.startTime.getTime() +
-          record.slaHours * (newViolationCount + 1) * 60 * 60 * 1000
+      record.nextDueAt = this.calculateNextDueAt(
+        record.startTime,
+        slaHours,
+        newViolationCount
       );
     }
 
@@ -107,9 +270,10 @@ export class SlaTrackingService {
 
       // update nextDueAt dựa trên violationCount mới
       if (record.startTime && record.slaHours) {
-        record.nextDueAt = new Date(
-          record.startTime.getTime() +
-            record.slaHours * (newViolationCount + 1) * 60 * 60 * 1000
+        record.nextDueAt = this.calculateNextDueAt(
+          record.startTime,
+          slaHours,
+          newViolationCount
         );
       }
 
@@ -133,9 +297,10 @@ export class SlaTrackingService {
       );
     } else {
       if (record.startTime && record.slaHours) {
-        record.nextDueAt = new Date(
-          record.startTime.getTime() +
-            record.slaHours * (newViolationCount + 1) * 60 * 60 * 1000
+        record.nextDueAt = this.calculateNextDueAt(
+          record.startTime,
+          slaHours,
+          newViolationCount
         );
       }
       await this.recordRepository.save(record);
@@ -143,7 +308,7 @@ export class SlaTrackingService {
   }
 
   /**
-   * Tính số giờ còn lại
+   * Tính số giờ còn lại (theo giờ hành chính)
    */
   private calculateRemainingHours(
     record: RecordEntity,
@@ -153,20 +318,21 @@ export class SlaTrackingService {
       return 0;
     }
 
-    const now = new Date();
-    // Cộng thêm 7 giờ vào now (điều chỉnh timezone UTC+7)
-    const nowWithOffset = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const nextDueAt = new Date(
-      record.startTime.getTime() +
-        record.slaHours * (record.violationCount + 1) * 60 * 60 * 1000
-    );
-    const startTime = new Date(record.startTime);
-    const elapsedHours =
-      (nextDueAt.getTime() - nowWithOffset.getTime()) / (1000 * 60 * 60);
-
+    const nowWithOffset = this.getNowWithOffset();
     const slaHours = activity.slaHours || record.slaHours || 24;
-    // const remaining = slaHours - elapsedHours;
-    const remaining = elapsedHours;
+
+    // Tính nextDueAt dựa trên giờ hành chính
+    const nextDueAt = this.calculateNextDueAt(
+      record.startTime,
+      slaHours,
+      record.violationCount || 0
+    );
+
+    // Tính số giờ hành chính còn lại từ now đến nextDueAt
+    const remaining = this.calculateBusinessHoursBetween(
+      nowWithOffset,
+      nextDueAt
+    );
 
     // Làm tròn đến 2 chữ số thập phân (để lưu vào numeric column)
     // Nếu âm quá nhiều, giới hạn ở -999 để tránh overflow

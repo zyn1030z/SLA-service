@@ -6,6 +6,7 @@ import { SystemEntity } from "../../entities/system.entity";
 import { ActivityEntity } from "../../entities/activity.entity";
 import { RecordService } from "./record.service";
 import { RecordController } from "./record.controller";
+import { SlaModule } from "../sla/sla.module";
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { RecordController } from "./record.controller";
       SystemEntity,
       ActivityEntity,
     ]),
+    SlaModule,
   ],
   controllers: [RecordController],
   providers: [RecordService],
