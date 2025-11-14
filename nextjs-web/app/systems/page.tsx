@@ -118,7 +118,7 @@ export default function SystemsPage() {
         system.apiConfig?.workflowEndpoint ||
         "/api/v2/tcm/workflow/get_workflow_steps"
       }`;
-      const response = await fetch("/api/proxy-odoo", {
+      const response = await fetch("/api/proxy-odoo", {                       
         method: "POST",
         headers: {
           "Content-Type": "application/json",

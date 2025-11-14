@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    // Breakpoint 1: Start of function
+    // Breakpoint 1: Start of function 
     debugger; // Set breakpoint here in VS Code
 
     const body = await request.json();
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
         method,
         headers,
         body: method === "GET" ? undefined : JSON.stringify(requestBody),
-          signal: controller.signal,
+        signal: controller.signal,
       });
 
       console.log(

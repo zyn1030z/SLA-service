@@ -6,6 +6,10 @@ export class CreateSlaActionLogs1700000000007 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.startTransaction();
     try {
+      // Drop table if it exists with old structure (from CreateInitialTables migration)
+      await queryRunner.query(`DROP TABLE IF EXISTS sla_action_logs`);
+
+      // Create table with correct structure
       await queryRunner.query(`
         CREATE TABLE IF NOT EXISTS sla_action_logs (
           id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -21,6 +25,7 @@ export class CreateSlaActionLogs1700000000007 implements MigrationInterface {
         )
       `);
 
+      // Create indexes
       await queryRunner.query(`
         CREATE INDEX IF NOT EXISTS idx_sla_action_logs_record_id
         ON sla_action_logs (record_id)
@@ -49,4 +54,3 @@ export class CreateSlaActionLogs1700000000007 implements MigrationInterface {
     }
   }
 }
-

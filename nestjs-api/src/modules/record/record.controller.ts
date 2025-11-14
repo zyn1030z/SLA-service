@@ -99,7 +99,7 @@ export class RecordController {
       },
     },
   })
-  @ApiResponse({ status: 201, description: "Record created" })
+  @ApiResponse({ status: 200, description: "Record created" })
   async create(@Body() body: CreateRecordDto) {
     // Tối thiểu yêu cầu recordId và model
     if (!body.recordId || !body.model) {
