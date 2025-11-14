@@ -35,6 +35,7 @@ interface SlaActionLog {
   id: string;
   recordId: string;
   workflowId: number | null;
+  workflowName?: string | null;
   activityId: number | null;
   actionType: ActionType;
   violationCount: number;
@@ -180,7 +181,7 @@ const SlaActionLogsPage = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("slaLogs.recordId")}</TableHead>
-                    <TableHead>{t("slaLogs.workflowId")}</TableHead>
+                    <TableHead>{t("slaLogs.workflowName")}</TableHead>
                     <TableHead>{t("slaLogs.activityId")}</TableHead>
                     <TableHead>{t("slaLogs.actionType")}</TableHead>
                     <TableHead>{t("slaLogs.violationCount")}</TableHead>
@@ -195,7 +196,9 @@ const SlaActionLogsPage = () => {
                       <TableCell className="font-medium">
                         {log.recordId}
                       </TableCell>
-                      <TableCell>{log.workflowId ?? "-"}</TableCell>
+                      <TableCell>
+                        {log.workflowName ?? log.workflowId ?? "-"}
+                      </TableCell>
                       <TableCell>{log.activityId ?? "-"}</TableCell>
                       <TableCell>
                         <Badge

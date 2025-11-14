@@ -1,10 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { RecordEntity } from "../../entities/record.entity";
 import { ActivityEntity } from "../../entities/activity.entity";
 import { OdooService } from "../odoo/odoo.service";
 import { SlaActionLogEntity } from "../../entities/sla-action-log.entity";
+import { WorkflowEntity } from "../../entities/workflow.entity";
 
 export interface ListActionLogsQuery {
   page?: number;
@@ -27,6 +28,8 @@ export class SlaTrackingService {
     private activityRepository: Repository<ActivityEntity>,
     @InjectRepository(SlaActionLogEntity)
     private slaActionLogRepository: Repository<SlaActionLogEntity>,
+    @InjectRepository(WorkflowEntity)
+    private workflowRepository: Repository<WorkflowEntity>,
     private odooService: OdooService
   ) {}
 
@@ -584,8 +587,39 @@ export class SlaTrackingService {
 
     const [items, total] = await qb.getManyAndCount();
 
+    const workflowIds = Array.from(
+      new Set(
+        items
+          .map((log: SlaActionLogEntity) => log.workflowId)
+          .filter((id: number | null): id is number => typeof id === "number")
+      )
+    );
+
+    let workflowNameMap = new Map<number, string>();
+
+    if (workflowIds.length > 0) {
+      const workflows = await this.workflowRepository.find({
+        where: { id: In(workflowIds) },
+        select: ["id", "workflowName"],
+      });
+      workflowNameMap = new Map(
+        workflows.map((workflow: WorkflowEntity) => [
+          workflow.id,
+          workflow.workflowName,
+        ])
+      );
+    }
+
+    const itemsWithWorkflowName = items.map((log: SlaActionLogEntity) => ({
+      ...log,
+      workflowName:
+        typeof log.workflowId === "number"
+          ? workflowNameMap.get(log.workflowId) ?? null
+          : null,
+    }));
+
     return {
-      items,
+      items: itemsWithWorkflowName,
       total,
       page,
       pageSize,
