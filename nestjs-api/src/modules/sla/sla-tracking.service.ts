@@ -618,8 +618,39 @@ export class SlaTrackingService {
           : null,
     }));
 
+    const activityIds = Array.from(
+      new Set(
+        items
+          .map((log: SlaActionLogEntity) => log.activityId)
+          .filter((id: number | null): id is number => typeof id === "number")
+      )
+    );
+    let activityNameMap = new Map<number, string>();
+    if (activityIds.length > 0) {
+      const activities = await this.activityRepository.find({
+        where: { id: In(activityIds) },
+        select: ["id", "name"],
+      });
+      activityNameMap = new Map(
+        activities.map((activity: ActivityEntity) => [
+          activity.id,
+          activity.name,
+        ])
+      );
+    }
+
+    const itemsWithActivityName = itemsWithWorkflowName.map(
+      (item: SlaActionLogEntity & { workflowName: string | null }) => ({
+        ...item,
+        activityName:
+          typeof item.activityId === "number"
+            ? activityNameMap.get(item.activityId) ?? null
+            : null,
+      })
+    );
+
     return {
-      items: itemsWithWorkflowName,
+      items: itemsWithActivityName,
       total,
       page,
       pageSize,
