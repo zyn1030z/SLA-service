@@ -7,6 +7,12 @@ import {
 } from "@/lib/types/system";
 import { apiClient } from "@/lib/api/client";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+
+const buildBackendUrl = (path: string) =>
+  API_BASE_URL ? `${API_BASE_URL}${path}` : `/api${path}`;
+
 export function useSystemManagement() {
   const [systems, setSystems] = useState<SystemConfig[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowWithSystem[]>([]);
@@ -147,7 +153,7 @@ export function useSystemManagement() {
   ) => {
     try {
       // Call backend API to create system
-      const response = await fetch("http://localhost:3000/systems", {
+      const response = await fetch(buildBackendUrl("/systems"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -254,12 +260,9 @@ export function useSystemManagement() {
   const deleteSystem = async (systemId: string) => {
     try {
       // Call backend API to delete system
-      const response = await fetch(
-        `http://localhost:3000/systems/${systemId}`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response = await fetch(buildBackendUrl(`/systems/${systemId}`), {
+        method: "DELETE",
+      });
 
       if (!response.ok) {
         console.warn("Failed to delete system from backend:", response.status);

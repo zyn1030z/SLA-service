@@ -66,6 +66,12 @@ declare global {
   }
 }
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+
+const buildBackendUrl = (path: string) =>
+  API_BASE_URL ? `${API_BASE_URL}${path}` : `/api${path}`;
+
 interface WorkflowStep {
   id: string;
   stepCode: string;
@@ -219,10 +225,16 @@ export default function WorkflowDetailPage() {
     const loadWorkflow = async () => {
       try {
         const response = await fetch(
-          `http://localhost:3000/workflows/${workflowId}`
+          buildBackendUrl(`/workflows/${workflowId}`)
         );
         if (response.ok) {
-          const workflowData = await response.json();
+          const rawData = await response.json();
+          const workflowData = rawData?.data ?? rawData;
+          if (!workflowData) {
+            console.warn("No workflow data returned");
+            setLoading(false);
+            return;
+          }
 
           // Transform API data to match our interface
           // Convert activities to workflow steps
@@ -325,7 +337,7 @@ export default function WorkflowDetailPage() {
 
       // Call API to update activity in database
       const response = await fetch(
-        `http://localhost:3000/workflows/activity/${step.id}`,
+        buildBackendUrl(`/workflows/activity/${step.id}`),
         {
           method: "PUT",
           headers: {
@@ -361,7 +373,7 @@ export default function WorkflowDetailPage() {
   const handleDeleteStep = async (stepId: string) => {
     try {
       const res = await fetch(
-        `http://localhost:3000/workflows/activity/${stepId}`,
+        buildBackendUrl(`/workflows/activity/${stepId}`),
         { method: "DELETE" }
       );
       if (!res.ok) {
@@ -608,7 +620,7 @@ export default function WorkflowDetailPage() {
 
       // Call API to update workflow
       const response = await fetch(
-        `http://localhost:3000/workflows/${workflow.id}`,
+        buildBackendUrl(`/workflows/${workflow.id}`),
         {
           method: "PUT",
           headers: {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getApiUrl } from "@/lib/api/get-api-url";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://sla_nestjs:3000";
+const API_BASE_URL = getApiUrl();
 
 export async function POST(
   request: NextRequest,
@@ -36,4 +36,3 @@ export async function POST(
     );
   }
 }
-

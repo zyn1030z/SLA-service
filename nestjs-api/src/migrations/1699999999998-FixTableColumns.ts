@@ -7,7 +7,9 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
     await queryRunner.startTransaction();
     try {
       // Fix systems table: rename name to system_name and add missing columns
-      const systemsHasSystemName = await queryRunner.query(`
+      const hasSystemsTable = await queryRunner.hasTable("systems");
+      if (hasSystemsTable) {
+        const systemsHasSystemName = await queryRunner.query(`
         SELECT EXISTS (
           SELECT FROM information_schema.columns 
           WHERE table_schema = 'public' 
@@ -16,9 +18,9 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
         )
       `);
 
-      if (!systemsHasSystemName[0]?.exists) {
-        // Rename name to system_name if it exists
-        await queryRunner.query(`
+        if (!systemsHasSystemName[0]?.exists) {
+          // Rename name to system_name if it exists
+          await queryRunner.query(`
           DO $$
           BEGIN
             IF EXISTS (
@@ -32,8 +34,8 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
           END $$;
         `);
 
-        // Add missing columns to systems
-        await queryRunner.query(`
+          // Add missing columns to systems
+          await queryRunner.query(`
           ALTER TABLE systems 
           ADD COLUMN IF NOT EXISTS description TEXT,
           ADD COLUMN IF NOT EXISTS base_url TEXT,
@@ -50,10 +52,13 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
           ADD COLUMN IF NOT EXISTS api_headers JSONB,
           ADD COLUMN IF NOT EXISTS api_request_body JSONB;
         `);
+        }
       }
 
       // Fix workflows table: add system_name and other missing columns
-      const workflowsHasSystemName = await queryRunner.query(`
+      const hasWorkflowsTable = await queryRunner.hasTable("workflows");
+      if (hasWorkflowsTable) {
+        const workflowsHasSystemName = await queryRunner.query(`
         SELECT EXISTS (
           SELECT FROM information_schema.columns 
           WHERE table_schema = 'public' 
@@ -62,9 +67,9 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
         )
       `);
 
-      if (!workflowsHasSystemName[0]?.exists) {
-        // Rename name to workflow_name if it exists and system_name doesn't
-        await queryRunner.query(`
+        if (!workflowsHasSystemName[0]?.exists) {
+          // Rename name to workflow_name if it exists and system_name doesn't
+          await queryRunner.query(`
           DO $$
           BEGIN
             IF EXISTS (
@@ -83,8 +88,8 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
           END $$;
         `);
 
-        // Add missing columns to workflows
-        await queryRunner.query(`
+          // Add missing columns to workflows
+          await queryRunner.query(`
           ALTER TABLE workflows 
           ADD COLUMN IF NOT EXISTS system_name VARCHAR,
           ADD COLUMN IF NOT EXISTS workflow_id INT,
@@ -103,14 +108,17 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
           ADD COLUMN IF NOT EXISTS auto_approve_api_config JSONB;
         `);
 
-        // Create index for workflows if not exists
-        await queryRunner.query(`
+          // Create index for workflows if not exists
+          await queryRunner.query(`
           CREATE INDEX IF NOT EXISTS idx_workflows_system_id_model ON workflows(system_id, model)
         `);
+        }
       }
 
       // Fix activities table: add missing columns
-      const activitiesHasActivityId = await queryRunner.query(`
+      const hasActivitiesTable = await queryRunner.hasTable("activities");
+      if (hasActivitiesTable) {
+        const activitiesHasActivityId = await queryRunner.query(`
         SELECT EXISTS (
           SELECT FROM information_schema.columns 
           WHERE table_schema = 'public' 
@@ -119,8 +127,8 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
         )
       `);
 
-      if (!activitiesHasActivityId[0]?.exists) {
-        await queryRunner.query(`
+        if (!activitiesHasActivityId[0]?.exists) {
+          await queryRunner.query(`
           ALTER TABLE activities 
           ADD COLUMN IF NOT EXISTS activity_id INT,
           ADD COLUMN IF NOT EXISTS code VARCHAR,
@@ -141,14 +149,17 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
           ADD COLUMN IF NOT EXISTS auto_approve_api_config JSONB;
         `);
 
-        // Create index for activities if not exists
-        await queryRunner.query(`
+          // Create index for activities if not exists
+          await queryRunner.query(`
           CREATE INDEX IF NOT EXISTS idx_activities_workflow_id_id ON activities(workflow_id, id)
         `);
+        }
       }
 
       // Fix transitions table: add missing columns
-      const transitionsHasTransitionId = await queryRunner.query(`
+      const hasTransitionsTable = await queryRunner.hasTable("transitions");
+      if (hasTransitionsTable) {
+        const transitionsHasTransitionId = await queryRunner.query(`
         SELECT EXISTS (
           SELECT FROM information_schema.columns 
           WHERE table_schema = 'public' 
@@ -157,8 +168,8 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
         )
       `);
 
-      if (!transitionsHasTransitionId[0]?.exists) {
-        await queryRunner.query(`
+        if (!transitionsHasTransitionId[0]?.exists) {
+          await queryRunner.query(`
           ALTER TABLE transitions 
           ADD COLUMN IF NOT EXISTS transition_id INT,
           ADD COLUMN IF NOT EXISTS signal VARCHAR,
@@ -169,17 +180,18 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
           ADD COLUMN IF NOT EXISTS group_required BOOLEAN DEFAULT false;
         `);
 
-        // Drop old columns if they exist
-        await queryRunner.query(`
+          // Drop old columns if they exist
+          await queryRunner.query(`
           ALTER TABLE transitions 
           DROP COLUMN IF EXISTS from_step,
           DROP COLUMN IF EXISTS to_step;
         `);
 
-        // Create index for transitions if not exists
-        await queryRunner.query(`
+          // Create index for transitions if not exists
+          await queryRunner.query(`
           CREATE INDEX IF NOT EXISTS idx_transitions_activity_id_id ON transitions(activity_id, id)
         `);
+        }
       }
 
       await queryRunner.commitTransaction();
@@ -194,4 +206,3 @@ export class FixTableColumns1699999999998 implements MigrationInterface {
     throw new Error("Down migration not implemented for FixTableColumns");
   }
 }
-

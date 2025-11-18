@@ -4,7 +4,15 @@ import { json } from "express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule);
+
+  // Configure CORS properly
+  app.enableCors({
+    origin: true, // Allow all origins (you can restrict this in production)
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
 
   // Enable verbose Nest logger levels
   app.useLogger(["log", "error", "warn", "debug", "verbose"]);

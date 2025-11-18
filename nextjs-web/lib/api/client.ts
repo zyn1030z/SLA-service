@@ -1,5 +1,3 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -7,9 +5,22 @@ export interface ApiResponse<T> {
 }
 
 class ApiClient {
-  private baseUrl: string;
+  private baseUrl?: string;
 
-  constructor(baseUrl: string = API_BASE_URL) {
+  private getBaseUrl(): string {
+    // If baseUrl is explicitly set, use it
+    if (this.baseUrl !== undefined) {
+      return this.baseUrl;
+    }
+    // If we're in the browser, use relative URLs (same origin)
+    if (typeof window !== "undefined") {
+      return "";
+    }
+    // For server-side rendering, use environment variable or default
+    return process.env.NEXT_PUBLIC_API_URL || "";
+  }
+
+  constructor(baseUrl?: string) {
     this.baseUrl = baseUrl;
   }
 
@@ -18,7 +29,8 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
-      const url = `${this.baseUrl}${endpoint}`;
+      const baseUrl = this.getBaseUrl();
+      const url = `${baseUrl}${endpoint}`;
 
       const response = await fetch(url, {
         headers: {

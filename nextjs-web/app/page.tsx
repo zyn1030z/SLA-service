@@ -15,6 +15,12 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useTranslation } from "@/lib/use-translation";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+
+const buildBackendUrl = (path: string) =>
+  API_BASE_URL ? `${API_BASE_URL}${path}` : `/api${path}`;
+
 const formatHoursToTime = (hours: number): string => {
   const totalSeconds = Math.abs(Math.round(hours * 3600));
   const h = Math.floor(totalSeconds / 3600);
@@ -67,11 +73,8 @@ export default function DashboardPage() {
     };
 
     try {
-      const base =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
-
       const [summaryResponse, recordsResponse] = await Promise.all([
-        axios.get(`${base}/dashboard/summary`).catch((error) => {
+        axios.get(buildBackendUrl("/dashboard/summary")).catch((error) => {
           console.error("Failed to load dashboard summary:", error);
           return null;
         }),
