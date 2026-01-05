@@ -41,7 +41,8 @@ export function getApiUrl(): string {
     const dockerLocalUrl =
       process.env.DOCKER_LOCAL_API_URL || "http://nestjs-api:3000";
     const dockerProdUrl =
-      process.env.DOCKER_PROD_API_URL || "http://10.32.35.27:3000";
+      // process.env.DOCKER_PROD_API_URL || "http://10.32.35.27:3000";
+      process.env.DOCKER_PROD_API_URL || "http://nestjs-api:3000";
     const url = dockerRuntime === "prod" ? dockerProdUrl : dockerLocalUrl;
     console.log(
       `[getApiUrl] Running in Docker (${dockerRuntime}), using URL: ${url}`

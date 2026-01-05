@@ -43,6 +43,7 @@ export class SlaTrackingService {
 
   /**
    * Kiểm tra xem có phải ngày làm việc (thứ 2 - thứ 6) không
+   * @deprecated Sử dụng isValidBusinessDay thay thế
    */
   private isBusinessDay(date: Date): boolean {
     const day = date.getUTCDay(); // 0: Chủ nhật, 6: Thứ bảy
@@ -50,42 +51,54 @@ export class SlaTrackingService {
   }
 
   /**
-   * Di chuyển đến 8h sáng của ngày làm việc tiếp theo
+   * Di chuyển đến 8h sáng của ngày làm việc tiếp theo (thứ 2-6 hoặc thứ 7 sáng)
    */
   private moveToNextBusinessDay(date: Date): Date {
     const next = new Date(date);
     do {
       next.setUTCDate(next.getUTCDate() + 1);
-    } while (!this.isBusinessDay(next));
-    next.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      next.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+    } while (!this.isValidBusinessDay(next));
     return next;
   }
 
   /**
-   * Kiểm tra xem thời gian có nằm trong giờ hành chính (8h-17h, thứ 2 - 6) không
+   * Kiểm tra xem thời gian có nằm trong giờ hành chính không
+   * - Thứ 2-6: 8h-17h
+   * - Thứ 7: 8h-12h
    */
   private isBusinessHours(date: Date): boolean {
+    if (!this.isValidBusinessDay(date)) {
+      return false;
+    }
     const hour = date.getUTCHours();
-    return (
-      this.isBusinessDay(date) &&
-      hour >= this.BUSINESS_START_HOUR &&
-      hour < this.BUSINESS_END_HOUR
-    );
+    const businessEndHour = this.getBusinessEndHourForDay(date);
+    return hour >= this.BUSINESS_START_HOUR && hour < businessEndHour;
   }
 
   /**
    * Đưa thời gian về đầu giờ hành chính gần nhất (8h sáng)
-   * Nếu đã qua 17h, đưa về 8h sáng ngày hôm sau
+   * - Thứ 2-6: 8h-17h
+   * - Thứ 7: 8h-12h
+   * - Chủ nhật: chuyển sang thứ 2
    */
   private normalizeToBusinessStart(date: Date): Date {
     let normalized = new Date(date);
     const hour = normalized.getUTCHours();
+    const day = normalized.getUTCDay();
+    const businessEndHour = this.getBusinessEndHourForDay(normalized);
+
+    // Nếu là chủ nhật hoặc thứ 7 từ 12h trở đi, chuyển sang thứ 2
+    if (day === 0 || (day === 6 && hour >= 12)) {
+      normalized = this.moveToNextBusinessDay(normalized);
+      return normalized;
+    }
 
     if (hour < this.BUSINESS_START_HOUR) {
       // Trước 8h sáng, đưa về 8h sáng cùng ngày
       normalized.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
-    } else if (hour >= this.BUSINESS_END_HOUR) {
-      // Sau 17h, đưa về 8h sáng ngày hôm sau
+    } else if (hour >= businessEndHour) {
+      // Sau giờ kết thúc (17h cho thứ 2-6, 12h cho thứ 7), chuyển sang ngày làm việc tiếp theo
       normalized = this.moveToNextBusinessDay(normalized);
       return normalized;
     } else {
@@ -93,7 +106,7 @@ export class SlaTrackingService {
       normalized.setUTCMinutes(0, 0, 0);
     }
 
-    if (!this.isBusinessDay(normalized)) {
+    if (!this.isValidBusinessDay(normalized)) {
       normalized = this.moveToNextBusinessDay(normalized);
     }
 
@@ -101,68 +114,182 @@ export class SlaTrackingService {
   }
 
   /**
+   * Kiểm tra xem ngày có phải là ngày làm việc hợp lệ không
+   * - Thứ 2 đến thứ 6: hợp lệ
+   * - Thứ 7: chỉ hợp lệ nếu < 12h
+   * - Chủ nhật: không hợp lệ
+   */
+  private isValidBusinessDay(date: Date): boolean {
+    const day = date.getUTCDay(); // 0: Chủ nhật, 6: Thứ bảy
+    const hour = date.getUTCHours();
+
+    // Thứ 2-6: hợp lệ
+    if (day >= 1 && day <= 5) {
+      return true;
+    }
+
+    // Thứ 7: chỉ hợp lệ nếu < 12h
+    if (day === 6) {
+      return hour < 12;
+    }
+
+    // Chủ nhật: không hợp lệ
+    return false;
+  }
+
+  /**
+   * Lấy giờ kết thúc giờ hành chính cho một ngày
+   * - Thứ 2-6: 17h
+   * - Thứ 7: 12h
+   * - Chủ nhật: 0 (không tính)
+   */
+  private getBusinessEndHourForDay(date: Date): number {
+    const day = date.getUTCDay();
+    if (day === 6) {
+      // Thứ 7: kết thúc lúc 12h
+      return 12;
+    }
+    // Thứ 2-6: kết thúc lúc 17h
+    return this.BUSINESS_END_HOUR;
+  }
+
+  /**
    * Tính số giờ hành chính giữa hai thời điểm
+   *
+   * Chỉ tính các khoảng thời gian nằm trong giờ hành chính từ 08:00 đến 17:00 (thứ 2-6)
+   * hoặc từ 08:00 đến 12:00 (thứ 7 sáng).
+   * Không tính thời gian ngoài khung giờ hành chính.
+   * Nếu start hoặc end nằm ngoài giờ hành chính thì chỉ tính phần giao với giờ hành chính.
+   * Chỉ tính từ thứ 2 đến sáng thứ 7 (trước 12h), không tính thứ 7 từ 12h trở đi và chủ nhật.
+   *
+   * @param start - Thời điểm bắt đầu
+   * @param end - Thời điểm kết thúc
+   * @returns Tổng số giờ hành chính (có thể là số thập phân)
    */
   public calculateBusinessHoursBetween(start: Date, end: Date): number {
+    // Kiểm tra điều kiện cơ bản
     if (end <= start) {
       return 0;
     }
 
-    let current = new Date(start);
+    // Lấy thông tin ngày của start và end
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    // Kiểm tra nếu start hoặc end không phải ngày làm việc hợp lệ
+    if (
+      !this.isValidBusinessDay(startDate) &&
+      !this.isValidBusinessDay(endDate)
+    ) {
+      // Nếu cả hai đều không hợp lệ, kiểm tra xem có ngày hợp lệ nào ở giữa không
+      const startDay = new Date(startDate);
+      startDay.setUTCHours(0, 0, 0, 0);
+      const endDay = new Date(endDate);
+      endDay.setUTCHours(0, 0, 0, 0);
+
+      // Nếu cùng ngày và cả hai đều không hợp lệ, return 0
+      if (startDay.getTime() === endDay.getTime()) {
+        return 0;
+      }
+    }
+
     let totalHours = 0;
+    let current = new Date(startDate);
 
-    // Nếu start nằm ngoài giờ hành chính, đưa về đầu giờ hành chính gần nhất
-    if (!this.isBusinessHours(start)) {
-      current = this.normalizeToBusinessStart(start);
-    }
+    // Duyệt qua từng ngày từ start đến end
+    while (current < endDate) {
+      const currentDay = new Date(current);
+      currentDay.setUTCHours(0, 0, 0, 0);
+      const nextDay = new Date(currentDay);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
-    while (!this.isBusinessDay(current)) {
-      current = this.moveToNextBusinessDay(current);
-    }
-
-    while (current < end) {
-      if (!this.isBusinessDay(current)) {
-        current = this.moveToNextBusinessDay(current);
+      // Kiểm tra xem ngày hiện tại có phải ngày làm việc hợp lệ không
+      if (!this.isValidBusinessDay(current)) {
+        // Nếu không hợp lệ, chuyển sang ngày tiếp theo
+        current = nextDay;
+        current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
         continue;
       }
 
-      // Tính thời điểm kết thúc giờ hành chính trong ngày hiện tại
-      const currentDay = new Date(current);
-      currentDay.setUTCHours(0, 0, 0, 0);
-      const endOfBusinessDay = new Date(currentDay);
-      endOfBusinessDay.setUTCHours(this.BUSINESS_END_HOUR, 0, 0, 0);
+      const dayOfWeek = current.getUTCDay();
+      const businessEndHour = this.getBusinessEndHourForDay(current);
 
-      if (end <= endOfBusinessDay) {
-        // End nằm trong cùng ngày, tính số giờ còn lại
-        const hoursInDay = Math.max(
-          0,
-          end.getUTCHours() - current.getUTCHours()
-        );
-        const minutesInDay =
-          (end.getUTCMinutes() - current.getUTCMinutes()) / 60;
-        totalHours += Math.max(0, hoursInDay + minutesInDay);
-        break;
-      } else {
-        // Tính số giờ từ current đến 17h cùng ngày
-        const hoursToEndOfDay = Math.max(
-          0,
-          this.BUSINESS_END_HOUR - current.getUTCHours()
-        );
-        const minutesToEndOfDay = (60 - current.getUTCMinutes()) / 60;
-        totalHours += hoursToEndOfDay + minutesToEndOfDay;
+      // Xác định thời điểm bắt đầu tính trong ngày
+      let dayStartHour = current.getUTCHours();
+      let dayStartMinute = current.getUTCMinutes();
 
-        // Chuyển sang 8h sáng ngày hôm sau
-        current = this.moveToNextBusinessDay(current);
+      // Nếu đây là ngày đầu tiên và start < 8h, bắt đầu từ 8h
+      if (
+        current.getTime() === startDate.getTime() &&
+        dayStartHour < this.BUSINESS_START_HOUR
+      ) {
+        dayStartHour = this.BUSINESS_START_HOUR;
+        dayStartMinute = 0;
       }
+
+      // Xác định thời điểm kết thúc tính trong ngày
+      let dayEndHour: number;
+      let dayEndMinute: number;
+
+      // Kiểm tra xem end có nằm trong cùng ngày không
+      const endDay = new Date(endDate);
+      endDay.setUTCHours(0, 0, 0, 0);
+      const isLastDay = currentDay.getTime() === endDay.getTime();
+
+      if (isLastDay) {
+        // Cùng ngày: tính đến end (nhưng không vượt quá businessEndHour)
+        dayEndHour = endDate.getUTCHours();
+        dayEndMinute = endDate.getUTCMinutes();
+
+        // Giới hạn không vượt quá businessEndHour
+        if (
+          dayEndHour > businessEndHour ||
+          (dayEndHour === businessEndHour && dayEndMinute > 0)
+        ) {
+          dayEndHour = businessEndHour;
+          dayEndMinute = 0;
+        }
+
+        // Nếu end < 8h, không tính
+        if (dayEndHour < this.BUSINESS_START_HOUR) {
+          break;
+        }
+      } else {
+        // Không phải ngày cuối: tính đến businessEndHour
+        dayEndHour = businessEndHour;
+        dayEndMinute = 0;
+      }
+
+      // Tính số giờ trong ngày (chỉ tính nếu dayStart < dayEnd)
+      if (
+        dayStartHour < dayEndHour ||
+        (dayStartHour === dayEndHour && dayStartMinute < dayEndMinute)
+      ) {
+        const startTimeMinutes = dayStartHour * 60 + dayStartMinute;
+        const endTimeMinutes = dayEndHour * 60 + dayEndMinute;
+        const hoursInDay = (endTimeMinutes - startTimeMinutes) / 60;
+        totalHours += hoursInDay;
+      }
+
+      // Chuyển sang ngày tiếp theo
+      current = nextDay;
+      current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
     }
 
-    return totalHours;
+    // Làm tròn đến 2 chữ số thập phân để tránh lỗi floating point
+    return Math.round(totalHours * 100) / 100;
   }
 
   /**
    * Tính thời điểm đến hạn tiếp theo dựa trên startTime và số giờ SLA
-   * Nếu thời gian đẩy lên trong khung 8h-17h mà chưa đủ thời gian SLA,
-   * thì tính đến 17h + thời gian SLA từ 8h sáng hôm sau
+   *
+   * Tính theo giờ hành chính:
+   * - Thứ 2-6: 8h-17h
+   * - Thứ 7 sáng: 8h-12h
+   * - Không tính thứ 7 từ 12h trở đi và chủ nhật
+   *
+   * Nếu thời gian đẩy lên trong khung giờ hành chính mà chưa đủ thời gian SLA,
+   * thì tính đến giờ kết thúc của ngày + thời gian từ 8h sáng ngày làm việc tiếp theo
    */
   public calculateNextDueAt(
     startTime: Date,
@@ -171,7 +298,6 @@ export class SlaTrackingService {
   ): Date {
     let current: Date;
     let remainingSlaHours = slaHours * (violationCount + 1);
-    // let remainingSlaHours = slaHours * violationCount;
 
     // Nếu startTime nằm trong giờ hành chính, kiểm tra xem có đủ thời gian không
     if (this.isBusinessHours(startTime)) {
@@ -179,13 +305,14 @@ export class SlaTrackingService {
       const startDay = new Date(startTime);
       startDay.setUTCHours(0, 0, 0, 0);
       const endOfDay = new Date(startDay);
-      endOfDay.setUTCHours(this.BUSINESS_END_HOUR, 0, 0, 0);
+      const businessEndHour = this.getBusinessEndHourForDay(startTime);
+      endOfDay.setUTCHours(businessEndHour, 0, 0, 0);
 
       const hoursUntilEndOfDay =
         (endOfDay.getTime() - startTime.getTime()) / (1000 * 60 * 60);
 
       if (hoursUntilEndOfDay < remainingSlaHours) {
-        // Không đủ thời gian trong ngày, tính đến 17h + thời gian từ 8h sáng hôm sau
+        // Không đủ thời gian trong ngày, tính đến giờ kết thúc + thời gian từ 8h sáng hôm sau
         remainingSlaHours -= hoursUntilEndOfDay;
         // Chuyển sang 8h sáng ngày làm việc kế tiếp
         current = this.moveToNextBusinessDay(endOfDay);
@@ -200,11 +327,17 @@ export class SlaTrackingService {
 
     // Tính thời điểm đến hạn bằng cách cộng dần số giờ hành chính còn lại
     while (remainingSlaHours > 0) {
+      // Lấy giờ kết thúc của ngày hiện tại
+      const businessEndHour = this.getBusinessEndHourForDay(current);
+      const currentHour = current.getUTCHours();
+
+      // Tính số giờ có thể dùng trong ngày hiện tại
       const hoursInCurrentDay = Math.min(
         remainingSlaHours,
-        this.BUSINESS_END_HOUR - current.getUTCHours()
+        businessEndHour - currentHour
       );
 
+      // Cộng số giờ vào thời điểm hiện tại
       current.setUTCHours(current.getUTCHours() + hoursInCurrentDay);
       remainingSlaHours -= hoursInCurrentDay;
 
@@ -231,14 +364,14 @@ export class SlaTrackingService {
     const maxViolations = activity.maxViolations || 3;
 
     // Tính số giờ hành chính đã trôi qua từ startTime đến now
-    // const elapsedBusinessHours = this.calculateBusinessHoursBetween(
-    //   startTime,
-    //   nowWithOffset
-    // );
+    const elapsedBusinessHours = this.calculateBusinessHoursBetween(
+      startTime,
+      nowWithOffset
+    );
 
     // Tính số lần vi phạm: mỗi slaHours là 1 lần vi phạm
     // Đảm bảo violations không bao giờ âm
-    const elapsedBusinessHours = 29;
+    // const elapsedBusinessHours = 29;
     const violations = Math.max(0, Math.floor(elapsedBusinessHours / slaHours));
 
     // Giới hạn số lần vi phạm tối đa
@@ -279,6 +412,7 @@ export class SlaTrackingService {
     }
 
     const oldViolationCount = record.violationCount || 0;
+    // tính toán số lần vi phạm mới dựa trên thời gian đã trôi qua
     const newViolationCount = this.calculateViolations(record, activity);
     const slaHours = activity.slaHours || record.slaHours || 24;
 
@@ -297,7 +431,7 @@ export class SlaTrackingService {
     }
 
     // Chỉ cập nhật nếu số lần vi phạm thay đổi
-    if (newViolationCount > oldViolationCount) {
+    if (newViolationCount != oldViolationCount) {
       record.violationCount = newViolationCount;
 
       record.remainingHours = this.calculateRemainingHours(record, activity);
@@ -395,16 +529,16 @@ export class SlaTrackingService {
 
     if (violationAction === "notify") {
       const success = await this.odooService.sendNotification(record, activity);
-      await this.saveActionLog({
-        record,
-        activity,
-        actionType: "notify",
-        violationCount: newViolationCount,
-        isSuccess: success,
-        message: success
-          ? null
-          : "Notification API not configured or request failed",
-      });
+        await this.saveActionLog({
+          record,
+          activity,
+          actionType: "notify",
+          violationCount: newViolationCount,
+          isSuccess: success,
+          message: success
+            ? null
+            : "Gửi thông báo vi phạm: API không được cấu hình hoặc yêu cầu thất bại",
+        });
     } else if (violationAction === "auto_approve") {
       const threshold = activity.maxViolations || 3;
       if (newViolationCount >= threshold) {

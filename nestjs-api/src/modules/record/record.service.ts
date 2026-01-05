@@ -15,6 +15,7 @@ export interface ListRecordsQuery {
   page?: number;
   pageSize?: number;
   status?: "waiting" | "violated" | "completed";
+  step?: string;
   search?: string;
   model?: string;
   workflowId?: number;
@@ -451,7 +452,8 @@ export class RecordService {
 
   async list(query: ListRecordsQuery) {
     const page = Math.max(1, Number(query.page || 1));
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize || 20)));
+    // const pageSize = Math.min(100, Math.max(1, Number(query.pageSize || 5)));
+    const pageSize = 5;
 
     const where: FindOptionsWhere<RecordEntity> = {};
     if (query.status) {
@@ -490,6 +492,9 @@ export class RecordService {
         "(r.record_id ILIKE :s OR r.workflow_name ILIKE :s OR r.step_name ILIKE :s)",
         { s }
       );
+    }
+    if (query.step) {
+      qb.andWhere("r.step_name = :step", { step: query.step });
     }
 
     const [items, total] = await qb.getManyAndCount();

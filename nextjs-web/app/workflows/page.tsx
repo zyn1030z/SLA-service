@@ -32,6 +32,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/loading-skeleton";
 import {
   Plus,
   Settings,
@@ -42,6 +44,7 @@ import {
   CheckCircle,
   Save,
   RefreshCw,
+  Database,
 } from "lucide-react";
 
 export default function WorkflowsPage() {
@@ -93,8 +96,9 @@ export default function WorkflowsPage() {
     if (selectedSystem === "all") {
       setFilteredWorkflows(workflows);
     } else {
+      // Compare as strings to avoid mismatches when ids come as numbers
       setFilteredWorkflows(
-        workflows.filter((w) => w.systemId === selectedSystem)
+        workflows.filter((w) => String(w.systemId) === String(selectedSystem))
       );
     }
   }, [selectedSystem, workflows]);
@@ -113,10 +117,65 @@ export default function WorkflowsPage() {
 
   if (loading) {
     return (
-      <main className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <main className="p-6 space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Skeleton className="h-10 w-32" />
+            <Skeleton className="h-10 w-40" />
+          </div>
         </div>
+
+        {/* Filter Skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-10 w-48" />
+        </div>
+
+        {/* Metrics Cards Skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-6 w-12 mb-1" />
+                <Skeleton className="h-3 w-24" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Content Skeleton */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Skeleton className="h-6 w-12" />
+                    <Skeleton className="h-6 w-16" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </main>
     );
   }
@@ -134,7 +193,7 @@ export default function WorkflowsPage() {
           <Link href="/systems">
             <Button variant="outline">
               <Settings className="h-4 w-4 mr-2" />
-              Quản lý Hệ thống
+              {t("workflows.manageSystems")}
             </Button>
           </Link>
           <Button onClick={() => setShowAddWorkflow(true)}>
@@ -145,24 +204,29 @@ export default function WorkflowsPage() {
       </div>
 
       {/* System Filter */}
-      <div className="flex items-center space-x-4">
-        <span className="text-sm font-medium">Lọc theo hệ thống:</span>
-        <select
-          value={selectedSystem}
-          onChange={(e) => setSelectedSystem(e.target.value)}
-          className="px-3 py-2 border rounded-md text-sm"
-        >
-          <option value="all">Tất cả hệ thống</option>
-          {systems.map((system) => (
-            <option key={system.id} value={system.id}>
-              {system.icon} {system.name}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center space-x-4">
+          <span className="text-sm font-medium">Lọc theo hệ thống:</span>
+          <select
+            value={selectedSystem}
+            onChange={(e) => setSelectedSystem(e.target.value)}
+            className="px-3 py-2 border rounded-md text-sm min-w-48"
+          >
+            <option value="all">Tất cả hệ thống</option>
+            {systems.map((system) => (
+              <option key={system.id} value={system.id}>
+                {system.icon} {system.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Hiển thị {filteredWorkflows.length} workflows
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <Card className="touch-manipulation">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               {t("workflows.totalWorkflows")}
@@ -170,31 +234,31 @@ export default function WorkflowsPage() {
             <Workflow className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{filteredWorkflows.length}</div>
+            <div className="text-xl lg:text-2xl font-bold">{filteredWorkflows.length}</div>
             <p className="text-xs text-muted-foreground">
               {t("workflows.configuredWorkflows")}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="touch-manipulation">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Hệ thống đã kết nối
+              {t("workflows.connectedSystems")}
             </CardTitle>
             <CheckCircle className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-xl lg:text-2xl font-bold text-green-600">
               {stats.connectedSystems}
             </div>
             <p className="text-xs text-muted-foreground">
-              / {stats.totalSystems} hệ thống
+              / {stats.totalSystems}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="touch-manipulation">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               {t("workflows.activeRecords")}
@@ -202,7 +266,7 @@ export default function WorkflowsPage() {
             <Clock className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
+            <div className="text-xl lg:text-2xl font-bold text-blue-600">
               {filteredWorkflows.filter((w) => w.status === "active").length}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -211,7 +275,7 @@ export default function WorkflowsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="touch-manipulation">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               {t("workflows.totalViolations")}
@@ -219,7 +283,7 @@ export default function WorkflowsPage() {
             <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">
+            <div className="text-xl lg:text-2xl font-bold text-destructive">
               {filteredWorkflows.reduce((sum, w) => sum + w.violations, 0)}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -237,105 +301,216 @@ export default function WorkflowsPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("workflows.workflowSummary")}</CardTitle>
-              <CardDescription>{t("workflows.detailedView")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Hệ thống</TableHead>
-                    <TableHead>{t("workflows.workflowName")}</TableHead>
-                    <TableHead>{t("workflows.model")}</TableHead>
-                    <TableHead>{t("workflows.steps")}</TableHead>
-                    <TableHead>{t("workflows.violations")}</TableHead>
-                    <TableHead>{t("workflows.status")}</TableHead>
-                    <TableHead>Hành động</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+          {filteredWorkflows.length === 0 ? (
+            <EmptyState
+              icon={<Database />}
+              title={selectedSystem === "all" ? "Chưa có workflows nào" : "Không tìm thấy workflows"}
+              description={
+                selectedSystem === "all"
+                  ? "Bắt đầu bằng cách thêm workflow đầu tiên hoặc đồng bộ từ hệ thống."
+                  : "Không có workflows nào cho hệ thống đã chọn. Thử chọn hệ thống khác hoặc thêm workflow mới."
+              }
+              action={{
+                label: "Thêm Workflow",
+                onClick: () => setShowAddWorkflow(true),
+              }}
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("workflows.workflowSummary")}</CardTitle>
+                <CardDescription>{t("workflows.detailedView")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Desktop Table View */}
+                <div className="hidden lg:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hệ thống</TableHead>
+                        <TableHead>{t("workflows.workflowName")}</TableHead>
+                        <TableHead>{t("workflows.model")}</TableHead>
+                        <TableHead>{t("workflows.steps")}</TableHead>
+                        <TableHead>{t("workflows.violations")}</TableHead>
+                        <TableHead>{t("workflows.status")}</TableHead>
+                        <TableHead>Hành động</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredWorkflows.map((workflow) => {
+                        const system = systems.find(
+                          (s) => s.id === workflow.systemId
+                        );
+                        return (
+                          <TableRow
+                            key={workflow.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => router.push(`/workflows/${workflow.id}`)}
+                          >
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <div
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs"
+                                  style={{
+                                    backgroundColor: system?.color || "#6B7280",
+                                  }}
+                                >
+                                  {system?.icon || "🏢"}
+                                </div>
+                                <span className="text-sm font-medium">
+                                  {workflow.systemName}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {workflow.workflowName || workflow.name}
+                            </TableCell>
+                            <TableCell>{workflow.model}</TableCell>
+                            <TableCell>{workflow.steps}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  workflow.violations > 0
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                              >
+                                {workflow.violations}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  workflow.status === "active"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {workflow.status === "active"
+                                  ? t("workflows.active")
+                                  : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSyncSystem(workflow.systemId);
+                                  }}
+                                  disabled={syncingSystems.has(workflow.systemId)}
+                                >
+                                  {syncingSystems.has(workflow.systemId) ? (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                  ) : (
+                                    <RefreshCw className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile Card View */}
+                <div className="lg:hidden space-y-4">
                   {filteredWorkflows.map((workflow) => {
                     const system = systems.find(
                       (s) => s.id === workflow.systemId
                     );
                     return (
-                      <TableRow
+                      <Card
                         key={workflow.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className="cursor-pointer hover:shadow-md transition-all touch-manipulation"
                         onClick={() => router.push(`/workflows/${workflow.id}`)}
                       >
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <div
-                              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs"
-                              style={{
-                                backgroundColor: system?.color || "#6B7280",
-                              }}
-                            >
-                              {system?.icon || "🏢"}
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center space-x-3">
+                              <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium"
+                                style={{
+                                  backgroundColor: system?.color || "#6B7280",
+                                }}
+                              >
+                                {system?.icon || "🏢"}
+                              </div>
+                              <div>
+                                <h3 className="font-medium text-sm">
+                                  {workflow.workflowName || workflow.name}
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                  {workflow.systemName}
+                                </p>
+                              </div>
                             </div>
-                            <span className="text-sm font-medium">
-                              {workflow.systemName}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={
+                                  workflow.violations > 0
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                              >
+                                {workflow.violations}
+                              </Badge>
+                              <Badge
+                                variant={
+                                  workflow.status === "active"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {workflow.status === "active"
+                                  ? t("workflows.active")
+                                  : "Inactive"}
+                              </Badge>
+                            </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {workflow.workflowName || workflow.name}
-                        </TableCell>
-                        <TableCell>{workflow.model}</TableCell>
-                        <TableCell>{workflow.steps}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              workflow.violations > 0
-                                ? "destructive"
-                                : "secondary"
-                            }
-                          >
-                            {workflow.violations}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              workflow.status === "active"
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {workflow.status === "active"
-                              ? t("workflows.active")
-                              : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
+
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Model:</span>
+                              <p className="font-mono text-xs">{workflow.model}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Steps:</span>
+                              <p className="font-medium">{workflow.steps}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end mt-4">
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSyncSystem(workflow.systemId);
                               }}
                               disabled={syncingSystems.has(workflow.systemId)}
+                              className="touch-manipulation"
                             >
                               {syncingSystems.has(workflow.systemId) ? (
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                               ) : (
-                                <RefreshCw className="h-4 w-4" />
+                                <RefreshCw className="h-4 w-4 mr-2" />
                               )}
+                              Sync
                             </Button>
                           </div>
-                        </TableCell>
-                      </TableRow>
+                        </CardContent>
+                      </Card>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="details">
@@ -356,7 +531,7 @@ export default function WorkflowsPage() {
         <TabsContent value="settings">
           <Card>
             <CardHeader>
-              <CardTitle>Thống kê theo Hệ thống</CardTitle>
+              <CardTitle>{t("workflows.systemStatistics")}</CardTitle>
               <CardDescription>
                 Xem chi tiết workflows và vi phạm theo từng hệ thống
               </CardDescription>
@@ -492,7 +667,7 @@ export default function WorkflowsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <span className="text-sm font-medium">Hệ thống</span>
+                <span className="text-sm font-medium">{t("navigation.systems")}</span>
                 <select
                   value={newWorkflow.systemId}
                   onChange={(e) => {

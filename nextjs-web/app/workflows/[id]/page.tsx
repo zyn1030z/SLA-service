@@ -189,6 +189,9 @@ export default function WorkflowDetailPage() {
 
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeRecordsCount, setActiveRecordsCount] = useState<number>(0);
+  const [violationsCount, setViolationsCount] = useState<number>(0);
+  const [countsLoading, setCountsLoading] = useState<boolean>(false);
   const [isLottieReady, setIsLottieReady] = useState(false);
   const [editingStep, setEditingStep] = useState<string | null>(null);
   const [showAddStep, setShowAddStep] = useState(false);
@@ -221,77 +224,105 @@ export default function WorkflowDetailPage() {
     "single" | "multiple"
   >("single");
 
-  useEffect(() => {
-    const loadWorkflow = async () => {
-      try {
-        const response = await fetch(
-          buildBackendUrl(`/workflows/${workflowId}`)
-        );
-        if (response.ok) {
-          const rawData = await response.json();
-          const workflowData = rawData?.data ?? rawData;
-          if (!workflowData) {
-            console.warn("No workflow data returned");
-            setLoading(false);
-            return;
-          }
-
-          // Transform API data to match our interface
-          // Convert activities to workflow steps
-          const steps: WorkflowStep[] = (workflowData.activities || []).map(
-            (activity: any, index: number) => ({
-              id: activity.id || `activity-${activity.activityId}`,
-              stepCode: activity.code || `step-${activity.activityId}`,
-              stepName: activity.name,
-              slaHours: activity.slaHours || 24, // From database or default
-              violationAction: activity.violationAction || "notify", // From database or default
-              maxViolations: activity.maxViolations || 3, // From database or default
-              order: index + 1,
-              isActive:
-                activity.isActive !== undefined ? activity.isActive : true, // From database or default
-              // Store original activity data for reference
-              originalActivity: {
-                activityId: activity.activityId,
-                kind: activity.kind,
-                splitMode: activity.splitMode,
-                joinMode: activity.joinMode,
-                flowStart: activity.flowStart,
-                flowStop: activity.flowStop,
-                flowCancel: activity.flowCancel,
-                flowDone: activity.flowDone,
-                action: activity.action,
-                note: activity.note,
-              },
-            })
-          );
-
-          setWorkflow({
-            id: workflowData.id,
-            workflowId: workflowData.workflowId,
-            workflowName: workflowData.workflowName,
-            name: workflowData.workflowName || workflowData.name,
-            model: workflowData.model,
-            description:
-              workflowData.note || `Workflow for ${workflowData.model}`,
-            steps: steps, // Use converted activities as steps
-            activities: workflowData.activities || [],
-            totalViolations: workflowData.violations || 0,
-            activeRecords: 0, // This would need to be calculated
-            status: workflowData.status,
-            notifyApiConfig: workflowData.notifyApiConfig,
-            autoApproveApiConfig: workflowData.autoApproveApiConfig,
-          });
-        } else {
-          console.error("Failed to load workflow:", response.statusText);
+  const loadWorkflow = async () => {
+    try {
+      const response = await fetch(buildBackendUrl(`/workflows/${workflowId}?t=${Date.now()}`));
+      if (response.ok) {
+        const rawData = await response.json();
+        const workflowData = rawData?.data ?? rawData;
+        if (!workflowData) {
+          console.warn("No workflow data returned");
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Error loading workflow:", error);
-      }
-      setLoading(false);
-    };
 
+        // Transform API data to match our interface
+        // Convert activities to workflow steps
+        const steps: WorkflowStep[] = (workflowData.activities || []).map(
+          (activity: any, index: number) => ({
+            id: activity.id || `activity-${activity.activityId}`,
+            stepCode: activity.code || `step-${activity.activityId}`,
+            stepName: activity.name,
+            slaHours: activity.slaHours || 24, // From database or default
+            violationAction: activity.violationAction || "notify", // From database or default
+            maxViolations: activity.maxViolations || 3, // From database or default
+            order: index + 1,
+            isActive:
+              activity.isActive !== undefined ? activity.isActive : true, // From database or default
+            // Store original activity data for reference
+            originalActivity: {
+              activityId: activity.activityId,
+              kind: activity.kind,
+              splitMode: activity.splitMode,
+              joinMode: activity.joinMode,
+              flowStart: activity.flowStart,
+              flowStop: activity.flowStop,
+              flowCancel: activity.flowCancel,
+              flowDone: activity.flowDone,
+              action: activity.action,
+              note: activity.note,
+            },
+          })
+        );
+
+        setWorkflow({
+          id: workflowData.id,
+          workflowId: workflowData.workflowId,
+          workflowName: workflowData.workflowName,
+          name: workflowData.workflowName || workflowData.name,
+          model: workflowData.model,
+          description:
+            workflowData.note || `Workflow for ${workflowData.model}`,
+          steps: steps, // Use converted activities as steps
+          activities: workflowData.activities || [],
+          totalViolations: workflowData.violations || 0,
+          activeRecords: workflowData.activeRecords || 0,
+          status: workflowData.status,
+          notifyApiConfig: workflowData.notifyApiConfig,
+          autoApproveApiConfig: workflowData.autoApproveApiConfig,
+        });
+        // after setting workflow, fetch dynamic counts (active records / violations)
+        refreshCounts(String(workflowData.workflowId ?? workflowData.id));
+      } else {
+        console.error("Failed to load workflow:", response.statusText);
+      }
+    } catch (error) {
+      console.error("Error loading workflow:", error);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
     loadWorkflow();
   }, [workflowId]);
+
+  // Refresh counts for this workflow (can be triggered on hover to show realtime loading)
+  const refreshCounts = async (wfId?: string) => {
+    const idToUse = wfId ?? String(workflow?.workflowId ?? workflow?.id);
+    if (!idToUse) return;
+    setCountsLoading(true);
+    try {
+      const base = `/records?page=1&pageSize=1&workflowId=${encodeURIComponent(idToUse)}`;
+      const [allRes, violatedRes] = await Promise.all([
+        fetch(buildBackendUrl(`${base}&t=${Date.now()}`)),
+        fetch(buildBackendUrl(`${base}&status=violated&t=${Date.now()}`)),
+      ]);
+      if (allRes.ok) {
+        const allJson = await allRes.json();
+        const allCount = allJson?.total ?? (Array.isArray(allJson.items) ? allJson.items.length : 0);
+        setActiveRecordsCount(allCount);
+      }
+      if (violatedRes.ok) {
+        const vJson = await violatedRes.json();
+        const vCount = vJson?.total ?? (Array.isArray(vJson.items) ? vJson.items.length : 0);
+        setViolationsCount(vCount);
+      }
+    } catch (err) {
+      console.error("Failed to refresh counts:", err);
+    } finally {
+      setCountsLoading(false);
+    }
+  };
 
   useEffect(() => {
     // If the script was already added elsewhere
@@ -337,7 +368,7 @@ export default function WorkflowDetailPage() {
 
       // Call API to update activity in database
       const response = await fetch(
-        buildBackendUrl(`/workflows/activity/${step.id}`),
+        buildBackendUrl(`/workflows/activity/${step.id}?t=${Date.now()}`),
         {
           method: "PUT",
           headers: {
@@ -353,8 +384,90 @@ export default function WorkflowDetailPage() {
       );
 
       if (response.ok) {
-        // Update local state only after successful API call
-        handleStepUpdate(editingStep, editForm);
+        // Parse updated activity returned by backend and merge into local step
+        const updatedActivity = await response.json();
+
+        // Map backend activity fields to our step fields
+        const updates: Partial<WorkflowStep> = {
+          slaHours: updatedActivity.slaHours ?? editForm.slaHours,
+          maxViolations: updatedActivity.maxViolations ?? editForm.maxViolations,
+          violationAction:
+            updatedActivity.violationAction ?? editForm.violationAction,
+          isActive:
+            typeof updatedActivity.isActive === "boolean"
+              ? updatedActivity.isActive
+              : editForm.isActive,
+        };
+
+        // If user edited name/code locally, preserve those too
+        if (editForm.stepName !== undefined) updates.stepName = editForm.stepName;
+        if (editForm.stepCode !== undefined) updates.stepCode = editForm.stepCode;
+
+        // Re-fetch full workflow to ensure UI is in sync with backend authoritative state
+        try {
+          console.log("Re-fetching workflow after save...");
+          const wfRes = await fetch(buildBackendUrl(`/workflows/${workflowId}?t=${Date.now()}`));
+          if (wfRes.ok) {
+            const rawData = await wfRes.json();
+            const workflowData = rawData?.data ?? rawData;
+            console.log("Workflow data received:", workflowData);
+            if (workflowData) {
+              const steps: WorkflowStep[] = (workflowData.activities || []).map(
+                (activity: any, index: number) => ({
+                  id: activity.id || `activity-${activity.activityId}`,
+                  stepCode: activity.code || `step-${activity.activityId}`,
+                  stepName: activity.name,
+                  slaHours: activity.slaHours || 24,
+                  violationAction: activity.violationAction || "notify",
+                  maxViolations: activity.maxViolations || 3,
+                  order: index + 1,
+                  isActive:
+                    activity.isActive !== undefined ? activity.isActive : true,
+                  originalActivity: {
+                    activityId: activity.activityId,
+                    kind: activity.kind,
+                    splitMode: activity.splitMode,
+                    joinMode: activity.joinMode,
+                    flowStart: activity.flowStart,
+                    flowStop: activity.flowStop,
+                    flowCancel: activity.flowCancel,
+                    flowDone: activity.flowDone,
+                    action: activity.action,
+                    note: activity.note,
+                  },
+                })
+              );
+
+              console.log("Setting workflow with steps:", steps);
+              setWorkflow({
+                id: workflowData.id,
+                workflowId: workflowData.workflowId,
+                workflowName: workflowData.workflowName,
+                name: workflowData.workflowName || workflowData.name,
+                model: workflowData.model,
+                description:
+                  workflowData.note || `Workflow for ${workflowData.model}`,
+                steps: steps,
+                activities: workflowData.activities || [],
+                totalViolations: workflowData.violations || 0,
+                activeRecords: workflowData.activeRecords || 0,
+                status: workflowData.status,
+                notifyApiConfig: workflowData.notifyApiConfig,
+                autoApproveApiConfig: workflowData.autoApproveApiConfig,
+              });
+
+              refreshCounts(String(workflowData.workflowId ?? workflowData.id));
+
+              // Reset edit state after successful save and re-fetch
+              setEditingStep(null);
+              setEditForm({});
+            }
+          } else {
+            console.error("Failed to re-fetch workflow:", wfRes.statusText);
+          }
+        } catch (err) {
+          console.error("Failed to re-fetch workflow after update:", err);
+        }
       } else {
         console.error("Failed to update activity:", response.statusText);
         alert("Lỗi khi lưu dữ liệu. Vui lòng thử lại.");
@@ -745,7 +858,12 @@ export default function WorkflowDetailPage() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
+          <Card
+            className="cursor-pointer hover:shadow-lg transition"
+            onMouseEnter={() => refreshCounts()}
+            onClick={() => router.push(`/workflows/${workflowId}?tab=steps`)}
+            title={countsLoading ? "Đang tải..." : `Tổng bước: ${workflow.steps.length}`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {t("workflow.totalSteps")}
@@ -760,7 +878,14 @@ export default function WorkflowDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className="cursor-pointer hover:shadow-lg transition"
+            onMouseEnter={() => refreshCounts()}
+            onClick={() =>
+              router.push(`/records?workflowId=${encodeURIComponent(String(workflow.workflowId ?? workflow.id))}`)
+            }
+            title={countsLoading ? "Đang tải..." : `Bản ghi đang hoạt động: ${activeRecordsCount || workflow.activeRecords}`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {t("workflow.activeRecords")}
@@ -769,7 +894,14 @@ export default function WorkflowDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {workflow.activeRecords}
+                {countsLoading ? (
+                  <span className="inline-flex items-center space-x-2">
+                    <span className="animate-spin inline-block h-4 w-4 border-b-2 rounded-full border-blue-600" />
+                    <span>{activeRecordsCount || workflow.activeRecords}</span>
+                  </span>
+                ) : (
+                  <span>{activeRecordsCount || workflow.activeRecords}</span>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 {t("workflow.currentlyTracked")}
@@ -777,7 +909,18 @@ export default function WorkflowDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className="cursor-pointer hover:shadow-lg transition"
+            onMouseEnter={() => refreshCounts()}
+            onClick={() =>
+              router.push(
+                `/records?workflowId=${encodeURIComponent(
+                  String(workflow.workflowId ?? workflow.id)
+                )}&status=violated`
+              )
+            }
+            title={countsLoading ? "Đang tải..." : `Vi phạm: ${violationsCount || workflow.totalViolations}`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {t("workflow.totalViolations")}
@@ -786,7 +929,14 @@ export default function WorkflowDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-destructive">
-                {workflow.totalViolations}
+                {countsLoading ? (
+                  <span className="inline-flex items-center space-x-2">
+                    <span className="animate-spin inline-block h-4 w-4 border-b-2 rounded-full border-destructive" />
+                    <span>{violationsCount || workflow.totalViolations}</span>
+                  </span>
+                ) : (
+                  <span>{violationsCount || workflow.totalViolations}</span>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 {t("workflow.slaViolations")}
@@ -826,21 +976,20 @@ export default function WorkflowDetailPage() {
               <CardContent>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("workflow.order")}</TableHead>
-                      <TableHead>{t("workflow.stepName")}</TableHead>
-                      <TableHead>Action (Odoo)</TableHead>
-                      <TableHead>{t("workflow.slaHours")}</TableHead>
-                      <TableHead>{t("workflow.violationAction")}</TableHead>
-                      <TableHead>{t("workflow.maxViolations")}</TableHead>
-                      <TableHead>Cấu hình API</TableHead>
-                      <TableHead>{t("workflow.status")}</TableHead>
-                      <TableHead>{t("common.actions")}</TableHead>
+                  <TableRow>
+                      <TableHead className="whitespace-nowrap">{t("workflow.order")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{t("workflow.stepName")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{t("workflow.slaHours")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{t("workflow.violationAction")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{t("workflow.maxViolations")}</TableHead>
+                      <TableHead className="whitespace-nowrap">Cấu hình API</TableHead>
+                      <TableHead className="whitespace-nowrap">{t("workflow.status")}</TableHead>
+                      <TableHead className="whitespace-nowrap">{t("common.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {workflow.steps.map((step) => (
-                      <React.Fragment key={step.id}>
+                      <>
                         <TableRow>
                           <TableCell className="font-medium">
                             {step.order}
@@ -927,19 +1076,7 @@ export default function WorkflowDetailPage() {
                               </div>
                             )}
                           </TableCell>
-                          <TableCell>
-                            {step.originalActivity?.action ? (
-                              <div className="max-w-xs">
-                                <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-                                  {step.originalActivity.action}
-                                </pre>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-sm">
-                                -
-                              </span>
-                            )}
-                          </TableCell>
+                          {/* Action (Odoo) column removed per UI request */}
                           <TableCell>
                             {editingStep === step.id ? (
                               <Input
@@ -1148,7 +1285,7 @@ export default function WorkflowDetailPage() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      </React.Fragment>
+                      </>
                     ))}
                   </TableBody>
                 </Table>

@@ -7,6 +7,8 @@ import { ActivityEntity } from "../../entities/activity.entity";
 import { RecordService } from "./record.service";
 import { RecordController } from "./record.controller";
 import { SlaModule } from "../sla/sla.module";
+import { TokenGuard } from "../auth/token.guard";
+import { Reflector } from "@nestjs/core";
 
 @Module({
   imports: [
@@ -19,7 +21,7 @@ import { SlaModule } from "../sla/sla.module";
     SlaModule,
   ],
   controllers: [RecordController],
-  providers: [RecordService],
+  providers: [RecordService, TokenGuard, Reflector],
   exports: [RecordService],
 })
 export class RecordModule {}

@@ -11,7 +11,12 @@ async function bootstrap() {
     origin: true, // Allow all origins (you can restrict this in production)
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-api-token",
+      "api-token",
+    ],
   });
 
   // Enable verbose Nest logger levels

@@ -20,7 +20,7 @@ export async function GET() {
     }
 
     const data = await response.json();
-    return NextResponse.json({ data, success: true });
+    return NextResponse.json(data);
   } catch (error: any) {
     console.error(`[GET /api/workflows] API request failed:`, {
       error: error?.message || String(error),
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json({ data, success: true });
+    return NextResponse.json(data);
   } catch (error) {
     console.error("API request failed:", error);
     return NextResponse.json(

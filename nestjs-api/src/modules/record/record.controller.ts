@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from "@nestjs/common";
 import {
   ApiBody,
@@ -16,7 +17,12 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { RecordEntity } from "../../entities/record.entity";
 import { Public } from "../auth/public.decorator";
+import { RequireToken } from "../auth/require-token.decorator";
+import { TokenGuard } from "../auth/token.guard";
 import {
   CreateRecordDto,
   RecordService,
@@ -42,7 +48,11 @@ class CreateRecordRequestDto {
 @ApiTags("records")
 @Controller("records")
 export class RecordController {
-  constructor(private readonly recordService: RecordService) {}
+  constructor(
+    private readonly recordService: RecordService,
+    @InjectRepository(RecordEntity)
+    private readonly recordRepository: Repository<RecordEntity>,
+  ) {}
 
   @Public()
   @Get()
@@ -64,7 +74,8 @@ export class RecordController {
     @Query("status") status?: "waiting" | "violated" | "completed",
     @Query("search") search?: string,
     @Query("model") model?: string,
-    @Query("workflowId") workflowId?: string
+    @Query("workflowId") workflowId?: string,
+    @Query("step") step?: string
   ) {
     return this.recordService.list({
       page: page ? Number(page) : undefined,
@@ -73,13 +84,37 @@ export class RecordController {
       search,
       model,
       workflowId: workflowId ? Number(workflowId) : undefined,
+      step,
     });
   }
 
-  // Endpoint cho Odoo tạo bản ghi record theo dõi
   @Public()
+  @Get("steps")
+  @ApiOperation({ summary: "Get distinct step names" })
+  @ApiResponse({ status: 200, description: "List of distinct step names" })
+  async steps() {
+    // Query distinct step_name from record table
+    const qb = this.recordRepository
+      .createQueryBuilder("r")
+      .select("DISTINCT r.step_name", "step")
+      .where("r.step_name IS NOT NULL")
+      .orderBy("r.step_name", "ASC");
+
+    const rows = await qb.getRawMany();
+    const steps = rows.map((r: any) => r.step).filter(Boolean);
+    return { success: true, steps };
+  }
+
+  // Endpoint cho Odoo tạo bản ghi record theo dõi
+  @Public() // Vẫn public nhưng yêu cầu token
+  @UseGuards(TokenGuard) // Áp dụng TokenGuard để kiểm tra token
+  @RequireToken() // Yêu cầu token trong header để bảo mật
   @Post()
-  @ApiOperation({ summary: "Create a record (Odoo integration)" })
+  @ApiOperation({
+    summary: "Create a record (Odoo integration)",
+    description:
+      "Requires API token in 'x-api-token' or 'api-token' header for security",
+  })
   @ApiBody({
     type: CreateRecordRequestDto,
     description: "Payload to create a tracking record from Odoo",
@@ -120,13 +155,47 @@ export class RecordController {
   @ApiOperation({ summary: "Update a record" })
   @ApiResponse({ status: 200, description: "Record updated" })
   async update(
-    @Param("id", ParseIntPipe) id: number,
+    @Param("id") recordId: string,
     @Body() body: UpdateRecordDto
   ) {
     if (Object.keys(body).length === 0) {
       throw new BadRequestException("Request body cannot be empty");
     }
-    const record = await this.recordService.update(id, body);
-    return { success: true, record };
+
+    // Find the record by recordId and stepCode
+    const where: any = {
+      recordId: recordId,
+    };
+    const bodyAny = body as any;
+    if (bodyAny.stage_code_old !== null && bodyAny.stage_code_old !== undefined) {
+      where.stepCode = bodyAny.stage_code_old;
+    }
+    const recordsToUpdate = await this.recordRepository.find({
+      where,
+    });
+    if (!recordsToUpdate || recordsToUpdate.length === 0) {
+      throw new BadRequestException(`No records found with recordId=${recordId} and stepCode=${bodyAny.stage_code_old || 'any'}`);
+    }
+
+    // Filter records where user has approval permission
+    let authorizedRecords = recordsToUpdate;
+    if (bodyAny.user_approve) {
+      authorizedRecords = recordsToUpdate.filter(record =>
+        record.userApprove?.some(user => user.login === bodyAny.user_approve)
+      );
+      if (authorizedRecords.length === 0) {
+        throw new BadRequestException(`User ${bodyAny.user_approve} is not authorized to approve any of these records`);
+      }
+    }
+
+    // Update all authorized records
+    // Remove unwanted fields from body before update
+    const { user_approve, stage_code_old, ...updateBody } = body as any;
+    const updatePromises = authorizedRecords.map(record =>
+      this.recordService.update(record.id, updateBody)
+    );
+    const updatedRecords = await Promise.all(updatePromises);
+
+    return { success: true, updatedRecords, count: updatedRecords.length };
   }
 }

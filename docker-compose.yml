@@ -2,6 +2,7 @@ version: "3.9"
 services:
   postgres:
     image: postgres:15
+    pull_policy: if_not_present
     container_name: sla_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}

@@ -83,7 +83,7 @@ const SlaActionLogsPage = () => {
     if (actionType) params.set("actionType", actionType);
     if (searchTerm) params.set("search", searchTerm);
 
-    try {
+      try {
       const res = await fetch(`/api/sla-action-logs?${params.toString()}`);
       const data: ApiResponse = await res.json();
       setLogs(data.items || []);
@@ -107,6 +107,17 @@ const SlaActionLogsPage = () => {
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const translateMessage = (msg: string | null) => {
+    if (!msg) return "-";
+    // Map backend English messages to Vietnamese for legacy logs
+    switch (msg.trim()) {
+      case "Notification API not configured or request failed":
+        return "Gửi thông báo vi phạm: API không được cấu hình hoặc yêu cầu thất bại";
+      default:
+        return msg;
+    }
+  };
 
   return (
     <main className="p-6 space-y-6">
@@ -180,27 +191,30 @@ const SlaActionLogsPage = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("slaLogs.recordId")}</TableHead>
-                    <TableHead>{t("slaLogs.workflowName")}</TableHead>
-                    <TableHead>{t("slaLogs.activityId")}</TableHead>
-                    <TableHead>{t("slaLogs.actionType")}</TableHead>
-                    <TableHead>{t("slaLogs.violationCount")}</TableHead>
-                    <TableHead>{t("slaLogs.success")}</TableHead>
-                    <TableHead>{t("slaLogs.message")}</TableHead>
-                    <TableHead>{t("slaLogs.createdAt")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.recordId")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.workflowName")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.activityId")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.actionType")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.violationCount")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.success")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.message")}</TableHead>
+                    <TableHead className="whitespace-nowrap">{t("slaLogs.createdAt")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="font-medium">
+                    <TableRow
+                      key={log.id}
+                      className={log.isSuccess ? "bg-green-50" : "bg-red-50"}
+                    >
+                      <TableCell className="whitespace-nowrap font-medium">
                         {log.recordId}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         {log.workflowName ?? log.workflowId ?? "-"}
                       </TableCell>
-                      <TableCell>{log.activityId ?? "-"}</TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">{log.activityId ?? "-"}</TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <Badge
                           variant={
                             log.actionType === "notify"
@@ -213,8 +227,8 @@ const SlaActionLogsPage = () => {
                             : t("slaLogs.autoApprove")}
                         </Badge>
                       </TableCell>
-                      <TableCell>{log.violationCount}</TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">{log.violationCount}</TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <Badge
                           variant={log.isSuccess ? "default" : "destructive"}
                         >
@@ -223,10 +237,13 @@ const SlaActionLogsPage = () => {
                             : t("slaLogs.successNo")}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {log.message || "-"}
+                      <TableCell
+                        className="max-w-2xl truncate"
+                        title={translateMessage(log.message) || "-"}
+                      >
+                        {translateMessage(log.message) || "-"}
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
+                      <TableCell className="whitespace-nowrap text-muted-foreground text-sm">
                         {formatDateTime(log.createdAt)}
                       </TableCell>
                     </TableRow>

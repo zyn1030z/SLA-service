@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { SystemEntity } from "../../entities/system.entity";
 import { WorkflowEntity } from "../../entities/workflow.entity";
+import { RecordEntity } from "../../entities/record.entity";
 // import { ApiProperty } from "@nestjs/swagger";
 
 export class CreateSystemDto {
@@ -89,13 +90,40 @@ export class SystemService {
     @InjectRepository(SystemEntity)
     private systemRepository: Repository<SystemEntity>,
     @InjectRepository(WorkflowEntity)
-    private workflowRepository: Repository<WorkflowEntity>
+    private workflowRepository: Repository<WorkflowEntity>,
+    @InjectRepository(RecordEntity)
+    private recordRepository: Repository<RecordEntity>
   ) {}
 
   async findAll(): Promise<SystemEntity[]> {
-    return this.systemRepository.find({
+    const systems = await this.systemRepository.find({
       order: { createdAt: "DESC" },
     });
+
+    // Calculate violations count from records table for each system
+    const systemIds = systems.map(s => s.id);
+    if (systemIds.length > 0) {
+      const violationsCounts = await this.systemRepository
+        .createQueryBuilder("s")
+        .leftJoin("records", "r", "r.system_id = s.id AND r.status = :status", { status: "violated" })
+        .select("s.id", "systemId")
+        .addSelect("COUNT(r.id)", "violationsCount")
+        .where("s.id IN (:...ids)", { ids: systemIds })
+        .groupBy("s.id")
+        .getRawMany();
+
+      // Map violations count back to systems
+      const violationsMap = new Map<number, number>();
+      violationsCounts.forEach(v => {
+        violationsMap.set(v.systemId, parseInt(v.violationsCount) || 0);
+      });
+
+      systems.forEach(system => {
+        system.violationsCount = violationsMap.get(system.id) || 0;
+      });
+    }
+
+    return systems;
   }
 
   async findOne(id: string | number): Promise<SystemEntity | null> {

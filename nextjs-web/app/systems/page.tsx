@@ -43,6 +43,7 @@ import {
   Save,
   X,
   FileText,
+  Info,
 } from "lucide-react";
 import { log } from "console";
 
@@ -217,6 +218,8 @@ export default function SystemsPage() {
     []
   );
   const [selectedSystemName, setSelectedSystemName] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name?: string } | null>(null);
   const [newSystem, setNewSystem] = useState({
     name: "",
     description: "",
@@ -271,7 +274,7 @@ export default function SystemsPage() {
       setShowAddSystem(false);
       setAlertData({
         title: "Thành công",
-        description: "Hệ thống đã được thêm!",
+        description: t("systems.systemAdded"),
         type: "success",
         syncedWorkflows: [],
       });
@@ -298,7 +301,7 @@ export default function SystemsPage() {
     if (!system) {
       setAlertData({
         title: "Lỗi",
-        description: "Hệ thống không tìm thấy",
+        description: t("systems.systemNotFound"),
         type: "error" as "success" | "error" | "info",
         syncedWorkflows: [],
       });
@@ -350,7 +353,7 @@ export default function SystemsPage() {
     setAlertData({
       title: isConnected ? "Kết nối thành công" : "Lỗi kết nối",
       description: isConnected
-        ? "Hệ thống đã kết nối thành công"
+        ? t("systems.systemConnected")
         : "Không thể kết nối đến hệ thống",
       type: isConnected ? "success" : "error",
       syncedWorkflows: [],
@@ -359,16 +362,18 @@ export default function SystemsPage() {
   };
 
   const handleDeleteSystem = async (systemId: string) => {
-    if (confirm("Bạn có chắc chắn muốn xóa hệ thống này?")) {
-      await deleteSystem(systemId);
-      setAlertData({
-        title: "Đã xóa",
-        description: "Hệ thống đã được xóa thành công",
-        type: "success",
-        syncedWorkflows: [],
-      });
-      setShowAlert(true);
-    }
+    // keep original logic but allow caller to bypass browser confirm
+    // When called directly, we still use a browser confirm as a fallback
+    const shouldProceed = deleteTarget && deleteTarget.id === systemId ? true : confirm("Bạn có chắc chắn muốn xóa hệ thống này?");
+    if (!shouldProceed) return;
+    await deleteSystem(systemId);
+    setAlertData({
+      title: "Đã xóa",
+      description: t("systems.systemDeleted"),
+      type: "success",
+      syncedWorkflows: [],
+    });
+    setShowAlert(true);
   };
 
   const handleViewWorkflows = (systemId: string) => {
@@ -486,15 +491,15 @@ export default function SystemsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            Quản lý Hệ thống
+            {t("systems.title")}
           </h1>
           <p className="text-muted-foreground">
-            Quản lý cấu hình và đồng bộ workflows từ nhiều hệ thống
+            {t("systems.subtitle")}
           </p>
         </div>
         <Button onClick={() => setShowAddSystem(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Thêm Hệ thống
+          {t("systems.addSystem")}
         </Button>
       </div>
 
@@ -502,13 +507,13 @@ export default function SystemsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tổng Hệ thống</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("systems.totalSystems")}</CardTitle>
             <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalSystems}</div>
             <p className="text-xs text-muted-foreground">
-              Hệ thống đã cấu hình
+              {t("systems.configuredSystems")}
             </p>
           </CardContent>
         </Card>
@@ -523,7 +528,7 @@ export default function SystemsPage() {
               {stats.connectedSystems}
             </div>
             <p className="text-xs text-muted-foreground">
-              Hệ thống đang hoạt động
+              {t("systems.activeSystems")}
             </p>
           </CardContent>
         </Card>
@@ -562,7 +567,7 @@ export default function SystemsPage() {
       {/* Systems Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Danh sách Hệ thống</CardTitle>
+          <CardTitle>{t("systems.systemList")}</CardTitle>
           <CardDescription>
             Quản lý cấu hình và trạng thái kết nối của các hệ thống
           </CardDescription>
@@ -668,44 +673,63 @@ export default function SystemsPage() {
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => handleTestConnection(system.id)}
                           disabled={syncingSystems.has(system.id)}
+                          title="Kiểm tra kết nối"
+                          className="px-2 py-1 rounded-md"
                         >
                           <TestTube className="h-4 w-4" />
                         </Button>
+
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => handleSyncSystem(system.id)}
                           disabled={syncingSystems.has(system.id)}
+                          title="Đồng bộ workflows"
+                          className="px-2 py-1 rounded-md"
                         >
                           {syncingSystems.has(system.id) ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
                           ) : (
                             <RefreshCw className="h-4 w-4" />
                           )}
+                          <span className="ml-2 hidden sm:inline-block text-sm">Đồng bộ</span>
                         </Button>
-                        <Button
-                          variant="ghost"
+
+                        {/* <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => handleViewWorkflows(system.id)}
                           title="Xem workflows"
+                          className="px-2 py-1 rounded-md"
                         >
                           <FileText className="h-4 w-4" />
-                        </Button>
+                          <span className="ml-2 hidden sm:inline-block text-sm">Workflows</span>
+                        </Button> */}
+
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => openEditSystem(system.id)}
+                          title="Cấu hình hệ thống"
+                          className="px-2 py-1 rounded-md"
                         >
                           <Settings className="h-4 w-4" />
+                          <span className="ml-2 hidden sm:inline-block text-sm">Cấu hình</span>
                         </Button>
+
                         <Button
-                          variant="ghost"
+                          variant="destructive"
                           size="sm"
-                          onClick={() => handleDeleteSystem(system.id)}
+                          onClick={() => {
+                            setDeleteTarget({ id: system.id, name: system.name });
+                            setShowDeleteConfirm(true);
+                          }}
+                          title="Xóa hệ thống"
+                          className="px-2 py-1 rounded-md"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -719,17 +743,46 @@ export default function SystemsPage() {
         </CardContent>
       </Card>
 
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Xác nhận xóa</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa hệ thống{" "}
+              <strong>{deleteTarget?.name ?? ""}</strong>? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!deleteTarget) return;
+                // call delete logic (we bypass browser confirm because user already confirmed)
+                await handleDeleteSystem(deleteTarget.id);
+                setShowDeleteConfirm(false);
+                setDeleteTarget(null);
+              }}
+            >
+              Xóa
+            </AlertDialogAction>
+            <AlertDialogAction onClick={() => { setShowDeleteConfirm(false); setDeleteTarget(null); }}>
+              Hủy
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Add System Dialog */}
       {showAddSystem && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
-              <CardTitle>Thêm Hệ thống Mới</CardTitle>
+              <CardTitle>{t("systems.addNewSystem")}</CardTitle>
               <CardDescription>
                 Cấu hình hệ thống mới để đồng bộ workflows
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-6 p-6">
               {/* Basic Configuration - 2 columns */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
@@ -836,9 +889,15 @@ export default function SystemsPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
-                      <span className="text-sm font-medium">
-                        Workflow Endpoint
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Workflow Endpoint</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Đường dẫn endpoint trên hệ thống (ví dụ: <code className="bg-muted px-1 rounded">/api/v2/tcm/workflow/get_workflow_steps</code>). Hệ thống sẽ gọi endpoint này để lấy danh sách workflows.
+                          </span>
+                        </span>
+                      </div>
                       <Input
                         value={newSystem.apiConfig.workflowEndpoint}
                         onChange={(e) =>
@@ -856,7 +915,15 @@ export default function SystemsPage() {
                     </div>
 
                     <div>
-                      <span className="text-sm font-medium">HTTP Method</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">HTTP Method</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Phương thức HTTP được sử dụng khi gọi endpoint (GET/POST/PUT/DELETE). Mặc định là POST.
+                          </span>
+                        </span>
+                      </div>
                       <select
                         value={newSystem.apiConfig.method}
                         onChange={(e) =>
@@ -884,9 +951,15 @@ export default function SystemsPage() {
 
                   <div className="space-y-4">
                     <div>
-                      <span className="text-sm font-medium">
-                        Headers (JSON)
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Headers (JSON)</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Các header gửi kèm request (JSON). Ví dụ: <code className="bg-muted px-1 rounded">{"{ \"Content-Type\": \"application/json\" }"}</code>
+                          </span>
+                        </span>
+                      </div>
                       <textarea
                         value={JSON.stringify(
                           newSystem.apiConfig.headers,
@@ -913,9 +986,15 @@ export default function SystemsPage() {
                     </div>
 
                     <div>
-                      <span className="text-sm font-medium">
-                        Request Body (JSON)
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Request Body (JSON)</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-72 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Body gửi khi gọi API (JSON). Thường chứa access_token, model và các tham số cần thiết bởi hệ thống nguồn.
+                          </span>
+                        </span>
+                      </div>
                       <textarea
                         value={JSON.stringify(
                           newSystem.apiConfig.requestBody,
@@ -975,19 +1054,19 @@ export default function SystemsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <span className="text-sm font-medium">Tên hệ thống</span>
+                    <label className="text-sm font-medium block">Tên hệ thống</label>
                     <Input
                       value={editForm.name}
                       onChange={(e) =>
                         setEditForm({ ...editForm, name: e.target.value })
                       }
                       placeholder="Ví dụ: Odoo Production"
-                      className="mt-1"
+                      className="mt-1 w-full"
                     />
                   </div>
 
                   <div>
-                    <span className="text-sm font-medium">Mô tả</span>
+                    <label className="text-sm font-medium block">Mô tả</label>
                     <Input
                       value={editForm.description}
                       onChange={(e) =>
@@ -997,24 +1076,24 @@ export default function SystemsPage() {
                         })
                       }
                       placeholder="Mô tả hệ thống"
-                      className="mt-1"
+                      className="mt-1 w-full"
                     />
                   </div>
 
                   <div>
-                    <span className="text-sm font-medium">URL API</span>
+                    <label className="text-sm font-medium block">URL API</label>
                     <Input
                       value={editForm.baseUrl}
                       onChange={(e) =>
                         setEditForm({ ...editForm, baseUrl: e.target.value })
                       }
                       placeholder="https://your-system.com"
-                      className="mt-1"
+                      className="mt-1 w-full"
                     />
                   </div>
 
                   <div>
-                    <span className="text-sm font-medium">API Key</span>
+                    <label className="text-sm font-medium block">API Key</label>
                     <Input
                       type="password"
                       value={editForm.apiKey}
@@ -1022,7 +1101,7 @@ export default function SystemsPage() {
                         setEditForm({ ...editForm, apiKey: e.target.value })
                       }
                       placeholder="Your API Key"
-                      className="mt-1"
+                      className="mt-1 w-full"
                     />
                   </div>
                 </div>
@@ -1042,25 +1121,25 @@ export default function SystemsPage() {
 
                   <div className="flex items-center space-x-3">
                     <div>
-                      <span className="text-sm font-medium">Màu</span>
+                      <label className="text-sm font-medium block">Màu</label>
                       <input
                         type="color"
                         value={editForm.color}
                         onChange={(e) =>
                           setEditForm({ ...editForm, color: e.target.value })
                         }
-                        className="ml-2 h-9 w-12 p-0 border rounded"
+                        className="mt-1 h-9 w-12 p-0 border rounded"
                       />
                     </div>
                     <div>
-                      <span className="text-sm font-medium">Icon</span>
+                      <label className="text-sm font-medium block">Icon</label>
                       <Input
                         value={editForm.icon}
                         onChange={(e) =>
                           setEditForm({ ...editForm, icon: e.target.value })
                         }
                         placeholder="🏢"
-                        className="mt-1 w-24"
+                        className="mt-1 w-full"
                       />
                     </div>
                   </div>
@@ -1074,9 +1153,15 @@ export default function SystemsPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
-                      <span className="text-sm font-medium">
-                        Workflow Endpoint
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Workflow Endpoint</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Đường dẫn endpoint trên hệ thống (ví dụ: <code className="bg-muted px-1 rounded">/api/v2/tcm/workflow/get_workflow_steps</code>). Hệ thống sẽ gọi endpoint này để lấy danh sách workflows.
+                          </span>
+                        </span>
+                      </div>
                       <Input
                         value={editForm.workflowEndpoint}
                         onChange={(e) =>
@@ -1091,7 +1176,15 @@ export default function SystemsPage() {
                     </div>
 
                     <div>
-                      <span className="text-sm font-medium">HTTP Method</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">HTTP Method</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Phương thức HTTP được sử dụng khi gọi endpoint (GET/POST/PUT/DELETE). Mặc định là POST.
+                          </span>
+                        </span>
+                      </div>
                       <select
                         value={editForm.apiMethod}
                         onChange={(e) =>
@@ -1116,9 +1209,15 @@ export default function SystemsPage() {
 
                   <div className="space-y-4">
                     <div>
-                      <span className="text-sm font-medium">
-                        Headers (JSON)
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Headers (JSON)</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Các header gửi kèm request (JSON). Ví dụ: <code className="bg-muted px-1 rounded">{"{ \"Content-Type\": \"application/json\" }"}</code>
+                          </span>
+                        </span>
+                      </div>
                       <textarea
                         value={JSON.stringify(editForm.apiHeaders, null, 2)}
                         onChange={(e) => {
@@ -1138,9 +1237,15 @@ export default function SystemsPage() {
                     </div>
 
                     <div>
-                      <span className="text-sm font-medium">
-                        Request Body (JSON)
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Request Body (JSON)</span>
+                        <span className="relative inline-block group">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-72 rounded bg-black/90 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Body gửi khi gọi API (JSON). Thường chứa access_token, model và các tham số cần thiết bởi hệ thống nguồn.
+                          </span>
+                        </span>
+                      </div>
                       <textarea
                         value={JSON.stringify(editForm.apiRequestBody, null, 2)}
                         onChange={(e) => {
@@ -1162,19 +1267,19 @@ export default function SystemsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setEditingSystem(null)}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Hủy
-                </Button>
-                <Button onClick={handleSaveEditSystem}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Lưu
-                </Button>
-              </div>
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditingSystem(null)}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Hủy
+                  </Button>
+                  <Button onClick={handleSaveEditSystem} className="ml-2">
+                    <Save className="h-4 w-4 mr-2" />
+                    Lưu
+                  </Button>
+                </div>
             </CardContent>
           </Card>
         </div>

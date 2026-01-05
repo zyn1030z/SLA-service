@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/use-translation";
 import {
   Card,
@@ -10,6 +11,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -19,584 +22,547 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
+import { Database, Clock, AlertTriangle, CheckCircle } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Search,
-  Filter,
-  Clock,
-  CheckCircle,
-  AlertTriangle,
-  FileText,
-} from "lucide-react";
-import { CountdownTimer } from "@/components/CountdownTimer";
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 export default function RecordsPage() {
   const { t } = useTranslation();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize] = useState(5);
   const [total, setTotal] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [countAll, setCountAll] = useState<number>(0);
+  const [countWaiting, setCountWaiting] = useState<number>(0);
+  const [countViolated, setCountViolated] = useState<number>(0);
+  const [countCompleted, setCountCompleted] = useState<number>(0);
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [groupBy, setGroupBy] = useState<
-    "none" | "workflow" | "step" | "status"
-  >("none");
+  const [searchDebounced, setSearchDebounced] = useState("");
+  const [groupBy, setGroupBy] = useState<string | null>(null);
+  const [stepFilter, setStepFilter] = useState<string | null>(null);
+  const [stepOptions, setStepOptions] = useState<string[]>([]);
+  const [workflowOptions, setWorkflowOptions] = useState<any[]>([]);
+  const [workflowFilter, setWorkflowFilter] = useState<string | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [copySuccess, setCopySuccess] = useState<string>("");
 
-  const loadRecords = async () => {
+  const loadRecords = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    params.set("page", String(page));
-    params.set("pageSize", String(pageSize));
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    if (searchTerm) params.set("search", searchTerm);
-    const res = await fetch(`/api/records?${params.toString()}`);
-    const data = await res.json();
-    setRecords(data.items || []);
-    setTotal(data.total || 0);
-    setLoading(false);
+    try {
+      let url = `/api/records?page=${page}&pageSize=${pageSize}`;
+      if (selectedReport && selectedReport !== "all") {
+        url += `&status=${encodeURIComponent(selectedReport)}`;
+      }
+      if (stepFilter && stepFilter !== "all") {
+        url += `&step=${encodeURIComponent(stepFilter)}`;
+      }
+      if (workflowFilter) {
+        url += `&workflowId=${encodeURIComponent(workflowFilter)}`;
+      }
+      if (searchDebounced) {
+        url += `&search=${encodeURIComponent(searchDebounced)}`;
+      }
+      if (groupBy && groupBy !== "none") {
+        url += `&group=${encodeURIComponent(groupBy)}`;
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+      const data = await res.json();
+      setRecords(data.items || []);
+        const totalCount = data.total ?? (data.items ? data.items.length : 0);
+        setTotal(totalCount);
+        setCountAll(totalCount); // keep counts in sync when loading paged data
+      } else {
+        setRecords([]);
+        setTotal(0);
+      }
+    } catch (error) {
+      console.error("Failed to load records:", error);
+      setRecords([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, selectedReport, searchDebounced, groupBy, stepFilter, workflowFilter]);
+
+  // load counts for cards (counts across all pages) respecting current filters except pagination
+  const loadCounts = useCallback(async () => {
+    try {
+      const baseParams: string[] = [];
+      if (stepFilter && stepFilter !== "all") baseParams.push(`step=${encodeURIComponent(String(stepFilter))}`);
+      if (workflowFilter) baseParams.push(`workflowId=${encodeURIComponent(String(workflowFilter))}`);
+      if (searchDebounced) baseParams.push(`search=${encodeURIComponent(searchDebounced)}`);
+      if (groupBy && groupBy !== "none") baseParams.push(`group=${encodeURIComponent(groupBy)}`);
+
+      const buildUrl = (status?: string) => {
+        const params = [...baseParams];
+        if (status) params.push(`status=${encodeURIComponent(status)}`);
+        // request a single item but let backend return total
+        params.push(`page=1&pageSize=1`);
+        return `/api/records?${params.join("&")}`;
+      };
+
+      const urls = {
+        all: buildUrl(),
+        waiting: buildUrl("waiting"),
+        violated: buildUrl("violated"),
+        completed: buildUrl("completed"),
+      };
+
+      const [allRes, waitingRes, violatedRes, completedRes] = await Promise.all([
+        fetch(urls.all),
+        fetch(urls.waiting),
+        fetch(urls.violated),
+        fetch(urls.completed),
+      ]);
+
+      const [allJson, waitingJson, violatedJson, completedJson] = await Promise.all([
+        allRes.ok ? allRes.json() : null,
+        waitingRes.ok ? waitingRes.json() : null,
+        violatedRes.ok ? violatedRes.json() : null,
+        completedRes.ok ? completedRes.json() : null,
+      ]);
+
+      const getCount = (data: any) => (data ? data.total ?? (Array.isArray(data.items) ? data.items.length : 0) : 0);
+
+      const allCount = getCount(allJson);
+      setCountAll(allCount);
+      setTotal((prev) => (allCount)); // keep pagination total in sync
+      setCountWaiting(getCount(waitingJson));
+      setCountViolated(getCount(violatedJson));
+      setCountCompleted(getCount(completedJson));
+    } catch (err) {
+      console.error("Failed to load counts:", err);
+    }
+  }, [stepFilter, workflowFilter, searchDebounced, groupBy]);
+
+  // refresh counts when filters change
+  useEffect(() => {
+    loadCounts();
+  }, [loadCounts]);
+  
+  // fetch step options from backend
+  // load workflows for workflow select
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/workflows");
+        if (!res.ok) return;
+        const data = await res.json();
+        // backend may return { data: [...] } or array
+        const list = Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : [];
+        if (mounted) setWorkflowOptions(list);
+      } catch (err) {
+        console.error("Failed to load workflows:", err);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // fetch step options from backend, preferring workflow details when workflowFilter set
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (workflowFilter) {
+          const wfRes = await fetch(`/api/workflows/${workflowFilter}`);
+          if (wfRes.ok) {
+            const wfJson = await wfRes.json();
+            const wfData = wfJson?.data || wfJson;
+            const activities =
+              wfData?.odooData?.activities ||
+              wfData?.odooData ||
+              wfData?.activities ||
+              [];
+            const names = Array.isArray(activities)
+              ? activities.map((a: any) => a.name).filter(Boolean)
+              : [];
+            if (mounted) setStepOptions(names);
+            return;
+          }
+        }
+
+        // fallback: use records/steps endpoint
+        const url = "/api/records/steps";
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const steps = Array.isArray(data) ? data : Array.isArray(data.steps) ? data.steps : [];
+        if (mounted) setStepOptions(steps);
+      } catch (err) {
+        console.error("Failed to load step options:", err);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [workflowFilter]);
+
+  const handleReportClick = (reportType: string) => {
+    setPage(1);
+    setSelectedReport((prev) => (prev === reportType ? null : reportType));
   };
+
+  // debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   useEffect(() => {
     loadRecords();
+  }, [loadRecords]);
+
+  // Trigger reload when stepFilter changes (ensure immediate fetch)
+  useEffect(() => {
+    setPage(1);
+    loadRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, statusFilter]);
+  }, [stepFilter]);
 
-  const filteredRecords = records.filter((record) => {
-    if (!searchTerm) return true;
-    const s = searchTerm.toLowerCase();
-    return (
-      record.recordId?.toLowerCase().includes(s) ||
-      record.workflowName?.toLowerCase().includes(s) ||
-      record.stepName?.toLowerCase().includes(s)
-    );
-  });
+  // Trigger reload when workflowFilter changes (reset page and fetch)
+  useEffect(() => {
+    setPage(1);
+    loadRecords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowFilter]);
 
-  const groupedRecords = useMemo(() => {
-    if (groupBy === "none") {
-      return [
-        {
-          label: null as string | null,
-          items: filteredRecords,
-        },
-      ];
-    }
-
-    const labelMap = new Map<string, { label: string; items: any[] }>();
-
-    const getLabel = (record: any) => {
-      switch (groupBy) {
-        case "workflow":
-          return record.workflowName || t("records.groupUnknown");
-        case "step":
-          return (
-            record.stepName || record.stepCode || t("records.groupUnknown")
-          );
-        case "status":
-          if (record.status === "waiting") return t("records.waiting");
-          if (record.status === "violated") return t("records.violated");
-          if (record.status === "completed") return t("records.completed");
-          return record.status || t("records.groupUnknown");
-        default:
-          return t("records.groupUnknown");
-      }
+  // map status values to Vietnamese labels
+  const statusLabel = (s?: string) => {
+    if (!s) return "-";
+    const map: Record<string, string> = {
+      waiting: "Đang chờ",
+      violated: "Vi phạm",
+      completed: "Hoàn thành",
+      processing: "Đang xử lý",
+      cancelled: "Đã huỷ",
+      success: "Thành công",
     };
-
-    filteredRecords.forEach((record) => {
-      const label = getLabel(record);
-      const key = `${groupBy}-${label}`;
-      if (!labelMap.has(key)) {
-        labelMap.set(key, { label, items: [] });
-      }
-      labelMap.get(key)!.items.push(record);
-    });
-
-    return Array.from(labelMap.values());
-  }, [filteredRecords, groupBy, t]);
-
-  const getStatusBadge = (status: string, violationCount: number) => {
-    if (status === "completed") {
-      return (
-        <Badge variant="default" className="bg-green-600">
-          {t("records.completed")}
-        </Badge>
-      );
-    } else if (status === "violated" || violationCount > 0) {
-      return <Badge variant="destructive">{t("records.violated")}</Badge>;
-    } else {
-      return <Badge variant="secondary">{t("records.waiting")}</Badge>;
-    }
+    return map[s] ?? s;
   };
 
-  /**
-   * Chuyển đổi số giờ (có thể là số thập phân) sang format HH:mm:ss
-   */
-  const formatHoursToTime = (hours: number): string => {
-    const totalSeconds = Math.abs(Math.round(hours * 3600));
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(
-      2,
-      "0"
-    )}:${String(s).padStart(2, "0")}`;
-  };
-
-  /**
-   * Format date để hiển thị đúng như database (UTC, không bị timezone conversion)
-   * Database lưu UTC: "2025-11-12 14:42:12+00"
-   * Hiển thị: "2025-11-12 14:42:12" (giống database, không cộng thêm 7 giờ)
-   */
-  const formatDateTime = (dateInput: string | Date): string => {
-    const date = new Date(dateInput);
-    // Lấy UTC time trực tiếp, không bị ảnh hưởng bởi timezone của browser
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(date.getUTCDate()).padStart(2, "0");
-    const hours = String(date.getUTCHours()).padStart(2, "0");
-    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-    const seconds = String(date.getUTCSeconds()).padStart(2, "0");
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  };
-
-  // Keep getRemainingTime for backward compatibility in other tabs
-  const getRemainingTime = (remainingHours: number) => {
-    if (remainingHours < 0) {
-      const timeStr = formatHoursToTime(remainingHours);
-      return (
-        <span className="text-destructive font-medium">
-          {timeStr} {t("records.overdue")}
-        </span>
-      );
-    } else if (remainingHours === 0) {
-      return (
-        <span className="text-muted-foreground">{t("records.completed")}</span>
-      );
-    } else {
-      const timeStr = formatHoursToTime(remainingHours);
-      return (
-        <span className="text-blue-600 font-medium">
-          {timeStr} {t("records.remaining")}
-        </span>
-      );
-    }
-  };
-
-  if (loading) {
-    return (
-      <main className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      </main>
-    );
-  }
+  
 
   return (
     <main className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {t("records.title")}
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight">{t("records.title")}</h1>
           <p className="text-muted-foreground">{t("records.subtitle")}</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t("records.searchRecords")}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 w-64"
-            />
-          </div>
-          <Select
-            value={groupBy}
-            onValueChange={(value) =>
-              setGroupBy(value as "none" | "workflow" | "step" | "status")
-            }
-          >
-            <SelectTrigger className="w-52">
-              <div className="flex items-center">
-                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder={t("records.groupBy")} />
-              </div>
+        <div className="flex items-center space-x-3">
+          <Input value={searchTerm} onChange={(e) => setSearchTerm((e.target as HTMLInputElement).value)} placeholder={"Tìm kiếm bản ghi..."} className="w-[320px]" />
+          <Select onValueChange={(v) => setGroupBy(v)} value={groupBy ?? "none"}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Không nhóm" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">{t("records.groupNone")}</SelectItem>
-              <SelectItem value="workflow">
-                {t("records.groupWorkflow")}
+              <SelectItem value="none">Không nhóm</SelectItem>
+              <SelectItem value="system">Theo hệ thống</SelectItem>
+              <SelectItem value="workflow">Theo quy trình</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select onValueChange={(v) => setWorkflowFilter(v === "all" ? null : v)} value={workflowFilter ?? "all"}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Lọc theo quy trình" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả quy trình</SelectItem>
+              {workflowOptions.map((w) => (
+                <SelectItem key={w.id} value={String(w.id)}>
+                  {w.workflowName || w.name || `Workflow ${w.id}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select onValueChange={(v) => setStepFilter(v === "all" ? null : v)} value={stepFilter ?? "all"}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Lọc theo bước" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả bước</SelectItem>
+              {stepOptions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
               </SelectItem>
-              <SelectItem value="step">{t("records.groupStep")}</SelectItem>
-              <SelectItem value="status">{t("records.groupStatus")}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <Tabs
-        defaultValue="all"
-        value={statusFilter}
-        onValueChange={(v) => {
-          setStatusFilter(v);
-          setPage(1);
-        }}
-        className="space-y-4"
-      >
+      {/* Report Cards */}
+      {/* removed debug display per request */}
+
+      <Tabs value={selectedReport ?? "all"} onValueChange={(v) => handleReportClick(v === "all" ? "all" : v)} className="mb-4">
         <TabsList>
-          <TabsTrigger value="all">{t("records.allRecords")}</TabsTrigger>
-          <TabsTrigger value="waiting">{t("records.waiting")}</TabsTrigger>
-          <TabsTrigger value="violated">{t("records.violated")}</TabsTrigger>
-          <TabsTrigger value="completed">{t("records.completed")}</TabsTrigger>
+          <TabsTrigger value="all">Tất cả bản ghi</TabsTrigger>
+          <TabsTrigger value="waiting">Đang chờ</TabsTrigger>
+          <TabsTrigger value="violated">Vi phạm</TabsTrigger>
+          <TabsTrigger value="completed">Hoàn thành</TabsTrigger>
         </TabsList>
+      </Tabs>
 
-        <TabsContent value="all" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {t("records.totalRecords")}
-                </CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <Card
+          className={`relative overflow-hidden border-0 bg-gradient-to-br from-blue-50 to-blue-100 cursor-pointer transition-all duration-200 hover:shadow-lg ${
+            selectedReport === "all" ? "ring-2 ring-blue-500" : ""
+          }`}
+          onClick={() => handleReportClick("all")}
+        >
+          <CardHeader className="flex items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-sm font-medium text-gray-700">Tổng bản ghi</CardTitle>
+              <CardDescription className="text-xs">Tổng bản ghi</CardDescription>
+            </div>
+            <Database className="h-6 w-6 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{records.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {t("records.totalRecords")}
-                </p>
+            <div className="text-3xl font-bold text-gray-800">{countAll}</div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {t("records.waiting")}
-                </CardTitle>
-                <Clock className="h-4 w-4 text-blue-600" />
+        <Card
+          className={`relative overflow-hidden border-0 bg-gradient-to-br from-yellow-50 to-yellow-100 cursor-pointer transition-all duration-200 hover:shadow-lg ${
+            selectedReport === "waiting" ? "ring-2 ring-yellow-500" : ""
+          }`}
+          onClick={() => handleReportClick("waiting")}
+        >
+          <CardHeader className="flex items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-sm font-medium text-gray-700">Đang chờ</CardTitle>
+              <CardDescription className="text-xs">Chờ phê duyệt</CardDescription>
+            </div>
+            <Clock className="h-6 w-6 text-yellow-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600">
-                  {records.filter((r) => r.status === "waiting").length}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("records.pendingApproval")}
-                </p>
+            <div className="text-3xl font-bold text-gray-800">{countWaiting}</div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {t("records.violated")}
-                </CardTitle>
-                <AlertTriangle className="h-4 w-4 text-destructive" />
+        <Card
+          className={`relative overflow-hidden border-0 bg-gradient-to-br from-red-50 to-red-100 cursor-pointer transition-all duration-200 hover:shadow-lg ${
+            selectedReport === "violated" ? "ring-2 ring-red-500" : ""
+          }`}
+          onClick={() => handleReportClick("violated")}
+        >
+          <CardHeader className="flex items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-sm font-medium text-gray-700">Vi phạm</CardTitle>
+              <CardDescription className="text-xs">Vi phạm SLA</CardDescription>
+            </div>
+            <AlertTriangle className="h-6 w-6 text-red-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-destructive">
-                  {records.filter((r) => r.status === "violated").length}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("records.slaViolations")}
-                </p>
+            <div className="text-3xl font-bold text-red-600">{countViolated}</div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {t("records.completed")}
-                </CardTitle>
-                <CheckCircle className="h-4 w-4 text-green-600" />
+        <Card
+          className={`relative overflow-hidden border-0 bg-gradient-to-br from-green-50 to-green-100 cursor-pointer transition-all duration-200 hover:shadow-lg ${
+            selectedReport === "completed" ? "ring-2 ring-green-500" : ""
+          }`}
+          onClick={() => handleReportClick("completed")}
+        >
+          <CardHeader className="flex items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-sm font-medium text-gray-700">Hoàn thành</CardTitle>
+              <CardDescription className="text-xs">Xử lý thành công</CardDescription>
+            </div>
+            <CheckCircle className="h-6 w-6 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {records.filter((r) => r.status === "completed").length}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("records.successfullyProcessed")}
-                </p>
+            <div className="text-3xl font-bold text-green-600">{countCompleted}</div>
               </CardContent>
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("records.recordDetails")}</CardTitle>
-              <CardDescription>{t("records.detailedView")}</CardDescription>
-            </CardHeader>
-            <CardContent>
+      {/* Simple Table */}
+      <div className="bg-white rounded-lg p-4 shadow-sm">
+        <h2 className="font-semibold mb-4">Chi tiết bản ghi</h2>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("records.recordId")}</TableHead>
-                    <TableHead>{t("records.workflow")}</TableHead>
-                    <TableHead>{t("records.currentStep")}</TableHead>
-                    <TableHead>{t("records.status")}</TableHead>
-                    <TableHead>{t("records.violations")}</TableHead>
-                    <TableHead>{t("records.timeRemaining")}</TableHead>
-                    <TableHead>{t("records.started")}</TableHead>
-                    <TableHead>{t("records.approvers")}</TableHead>
-                    <TableHead>{t("records.approvedAt")}</TableHead>
-                    <TableHead>{t("records.nextDueAt")}</TableHead>
+                  <TableRow className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">ID bản ghi Odoo</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Quy trình</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Bước hiện tại</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Trạng thái</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Vi phạm</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Bắt đầu</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Người phê duyệt</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Ngày phê duyệt</TableHead>
+              <TableHead className="text-xs uppercase text-muted-foreground tracking-wider whitespace-nowrap truncate">Ngày đến hạn tiếp theo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {groupedRecords.map((group) => (
-                    <React.Fragment key={group.label ?? "all"}>
-                      {group.label && (
-                        <TableRow>
-                          <TableCell
-                            colSpan={10}
-                            className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            {records.map((record) => (
+                        <TableRow
+                          key={record.id}
+                          onClick={() => {
+                            setSelectedRecord(record);
+                            setShowDetail(true);
+                          }}
+                          className={`cursor-pointer hover:bg-muted/50 ${
+                            record.status === "violated"
+                              ? "bg-red-50"
+                              : record.status === "waiting"
+                              ? "bg-yellow-50"
+                              : record.status === "completed"
+                              ? "bg-green-50"
+                              : ""
+                          }`}
+                        >
+                <TableCell className="whitespace-nowrap font-medium">{record.recordId ?? record.id}</TableCell>
+                <TableCell className="whitespace-nowrap truncate max-w-[240px]" title={record.workflowName ?? String(record.workflow) ?? "-"}>{record.workflowName ?? record.workflow}</TableCell>
+                <TableCell className="whitespace-nowrap truncate max-w-[220px]" title={record.stepName ?? record.currentStep ?? "-"}>{record.stepName ?? record.currentStep}</TableCell>
+                          <TableCell className="whitespace-nowrap w-28 text-center">
+                          <Badge
+                            className="inline-block px-2 py-1 text-sm"
+                            variant={record.status === "violated" ? "destructive" : record.status === "completed" ? "default" : "secondary"}
                           >
-                            {group.label}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {group.items.map((record) => (
-                        <TableRow key={record.id}>
-                          <TableCell className="font-medium">
-                            {record.recordId}
-                          </TableCell>
-                          <TableCell>{record.workflowName}</TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">
-                                {record.stepName}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {record.stepCode}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {getStatusBadge(
-                              record.status,
-                              record.violationCount
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                record.violationCount > 0
-                                  ? "destructive"
-                                  : "secondary"
-                              }
-                            >
-                              {record.violationCount}
+                    {statusLabel(record.status)}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            <CountdownTimer
-                              nextDueAt={record.nextDueAt}
-                              status={record.status}
-                            />
+                <TableCell className="whitespace-nowrap text-sm">{record.violationCount ?? 0}</TableCell>
+                <TableCell className="whitespace-nowrap text-sm">{record.createdAt ? new Date(record.createdAt).toLocaleString() : "-"}</TableCell>
+                <TableCell className="whitespace-nowrap truncate max-w-[180px]" title={record.userApprove && record.userApprove.length > 0 ? record.userApprove[0].name : record.approverName ?? "-"}>
+                  <div className="flex items-center">
+                    <span className="font-medium">
+                      {record.userApprove && record.userApprove.length > 0
+                        ? record.userApprove[0].name
+                        : record.approverName ?? "-"}
+                    </span>
+                  </div>
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDateTime(record.startTime)}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {Array.isArray(record.userApprove) &&
-                            record.userApprove.length > 0
-                              ? record.userApprove
-                                  .map((u: any) => u.name || u.login || u.id)
-                                  .join(", ")
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {record.approvedAt
-                              ? formatDateTime(record.approvedAt)
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {record.nextDueAt
-                              ? formatDateTime(record.nextDueAt)
-                              : "-"}
-                          </TableCell>
+                <TableCell className="whitespace-nowrap">{record.approvedAt ? new Date(record.approvedAt).toLocaleString() : "-"}</TableCell>
+                <TableCell className="whitespace-nowrap">{record.nextDueAt ? new Date(record.nextDueAt).toLocaleString() : "-"}</TableCell>
                         </TableRow>
-                      ))}
-                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+
           {/* Pagination */}
-          <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-muted-foreground">
-              {total > 0
-                ? `Hiển thị ${(page - 1) * pageSize + 1}-${Math.min(
-                    page * pageSize,
-                    total
-                  )} / ${total}`
-                : "Không có bản ghi"}
+            {total > 0 ? `Hiển thị ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, total)} của ${total} bản ghi` : "Không có bản ghi"}
             </div>
             <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1 || total === 0}>
                 Trang trước
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setPage((p) => (p * pageSize < total ? p + 1 : p))
-                }
-                disabled={page * pageSize >= total}
-              >
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(p + 1, Math.ceil(total / pageSize)))} disabled={page >= Math.ceil(total / pageSize) || total === 0}>
                 Trang sau
               </Button>
             </div>
           </div>
-        </TabsContent>
+ 
+      {/* Record detail dialog */}
+      <AlertDialog open={showDetail} onOpenChange={(open) => { setShowDetail(open); if (!open) setSelectedRecord(null); }}>
+      <AlertDialogContent className="w-full max-w-4xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg">Chi tiết bản ghi</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              Thông tin chi tiết của bản ghi được chọn
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selectedRecord && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">ID bản ghi Odoo</div>
+                    <div className="font-medium text-lg">{selectedRecord.recordId ?? selectedRecord.id}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Bước hiện tại</div>
+                    <div className="font-medium">{selectedRecord.stepName ?? selectedRecord.currentStep}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Vi phạm</div>
+                    <div className="font-medium">{selectedRecord.violationCount ?? 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Người phê duyệt</div>
+                    <div className="font-medium">
+                      {selectedRecord.userApprove && selectedRecord.userApprove.length > 0
+                        ? selectedRecord.userApprove[0].name
+                        : selectedRecord.approverName ?? "-"}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Quy trình</div>
+                    <div className="font-medium text-lg">{selectedRecord.workflowName ?? selectedRecord.workflow}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Trạng thái</div>
+                    <div className="mt-1">
+                      <Badge variant={selectedRecord.status === "violated" ? "destructive" : selectedRecord.status === "completed" ? "default" : "secondary"}>
+                        {statusLabel(selectedRecord.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Bắt đầu</div>
+                    <div className="font-medium">{selectedRecord.createdAt ? new Date(selectedRecord.createdAt).toLocaleString() : "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Ngày phê duyệt</div>
+                    <div className="font-medium">{selectedRecord.approvedAt ? new Date(selectedRecord.approvedAt).toLocaleString() : "-"}</div>
+                  </div>
+                </div>
+              </div>
 
-        <TabsContent value="waiting">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("records.waitingRecords")}</CardTitle>
-              <CardDescription>{t("records.recordsWaiting")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("records.recordId")}</TableHead>
-                    <TableHead>{t("records.workflow")}</TableHead>
-                    <TableHead>{t("records.currentStep")}</TableHead>
-                    <TableHead>{t("records.timeRemaining")}</TableHead>
-                    <TableHead>{t("records.started")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRecords
-                    .filter((r) => r.status === "waiting")
-                    .map((record) => (
-                      <TableRow key={record.id}>
-                        <TableCell className="font-medium">
-                          {record.recordId}
-                        </TableCell>
-                        <TableCell>{record.workflowName}</TableCell>
-                        <TableCell>{record.stepName}</TableCell>
-                        <TableCell>
-                          <CountdownTimer
-                            nextDueAt={record.nextDueAt}
-                            status={record.status}
-                          />
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(record.startTime)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="violated">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("records.violatedRecords")}</CardTitle>
-              <CardDescription>{t("records.recordsExceeded")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("records.recordId")}</TableHead>
-                    <TableHead>{t("records.workflow")}</TableHead>
-                    <TableHead>{t("records.currentStep")}</TableHead>
-                    <TableHead>{t("records.violations")}</TableHead>
-                    <TableHead>{t("records.overdueTime")}</TableHead>
-                    <TableHead>{t("records.started")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRecords
-                    .filter((r) => r.status === "violated")
-                    .map((record) => (
-                      <TableRow key={record.id}>
-                        <TableCell className="font-medium">
-                          {record.recordId}
-                        </TableCell>
-                        <TableCell>{record.workflowName}</TableCell>
-                        <TableCell>{record.stepName}</TableCell>
-                        <TableCell>
-                          <Badge variant="destructive">
-                            {record.violationCount}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-destructive font-medium">
-                          {formatHoursToTime(record.remainingHours)}{" "}
-                          {t("records.overdue")}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(record.startTime)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="completed">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("records.completedRecords")}</CardTitle>
-              <CardDescription>{t("records.recordsProcessed")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("records.recordId")}</TableHead>
-                    <TableHead>{t("records.workflow")}</TableHead>
-                    <TableHead>{t("records.finalStep")}</TableHead>
-                    <TableHead>{t("records.completed")}</TableHead>
-                    <TableHead>{t("records.duration")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRecords
-                    .filter((r) => r.status === "completed")
-                    .map((record) => (
-                      <TableRow key={record.id}>
-                        <TableCell className="font-medium">
-                          {record.recordId}
-                        </TableCell>
-                        <TableCell>{record.workflowName}</TableCell>
-                        <TableCell>{record.stepName}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(record.startTime)}
-                        </TableCell>
-                        <TableCell className="text-green-600 font-medium">
-                          {t("records.withinSla")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-muted-foreground">Ghi chú / Dữ liệu thô</div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(JSON.stringify(selectedRecord, null, 2));
+                          setCopySuccess("Đã sao chép");
+                          setTimeout(() => setCopySuccess(""), 2000);
+                        } catch {
+                          setCopySuccess("Không thể sao chép");
+                          setTimeout(() => setCopySuccess(""), 2000);
+                        }
+                      }}
+                    >
+                      Sao chép
+                    </Button>
+                    {copySuccess && <div className="text-sm text-muted-foreground">{copySuccess}</div>}
+                  </div>
+                </div>
+                <pre className="text-xs bg-slate-50 p-3 rounded max-h-72 overflow-auto font-mono">
+{JSON.stringify(selectedRecord, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDetail(false)}>Đóng</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
     </main>
   );
 }
