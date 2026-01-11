@@ -21,8 +21,19 @@ services:
   nestjs-api:
     build: ./nestjs-api
     container_name: sla_nestjs
-    env_file:
-      - ./.env
+    environment:
+      TYPEORM_HOST: 10.32.35.27
+      TYPEORM_PORT: 5433
+      # TYPEORM_HOST: postgres
+      # TYPEORM_PORT: 5432
+      TYPEORM_USERNAME: postgres
+      TYPEORM_PASSWORD: postgres
+      TYPEORM_DATABASE: sla
+      API_PORT: 3000
+      WEB_PORT: 3001
+      NEST_JWT_SECRET: your_jwt_secret_here
+      HMAC_SHARED_SECRET: your_hmac_secret_here
+      DOCKER_RUNTIME: prod
     depends_on:
       postgres:
         condition: service_healthy

@@ -105,7 +105,7 @@ export default function DashboardPage() {
 
     try {
       const [summaryResponse, recordsResponse] = await Promise.all([
-        axios.get("http://localhost:3000/dashboard/summary").catch((error) => {
+        fetch("/api/dashboard/summary").catch((error) => {
           console.error("Failed to load dashboard summary:", error);
           return null;
         }),
@@ -115,8 +115,9 @@ export default function DashboardPage() {
         }),
       ]);
 
-      if (summaryResponse?.data) {
-        setSummary(summaryResponse.data);
+      if (summaryResponse && summaryResponse.ok) {
+        const summaryData = await summaryResponse.json();
+        setSummary(summaryData);
       } else {
         setSummary(defaultSummary);
       }
@@ -141,45 +142,66 @@ export default function DashboardPage() {
 
     setMetricLoading(true);
     try {
-      let url = "/api/records?pageSize=10";
+      // For 'active' metric we want both waiting + violated records
+      if (metricType === "active") {
+        const pageSizeParam = "pageSize=20";
+        const [waitingRes, violatedRes] = await Promise.all([
+          fetch(`/api/records?status=waiting&${pageSizeParam}`),
+          fetch(`/api/records?status=violated&${pageSizeParam}`),
+        ]);
 
-      switch (metricType) {
-        case "violations":
-          url += "&status=violated";
-          break;
-        case "active":
-          url += "&status=waiting";
-          break;
-        case "completed":
-          // For completed today, we need to get all completed records and filter by today
-          // Since backend doesn't have date filter, we'll get recent completed records
-          url += "&status=completed&pageSize=20";
-          break;
-        case "success":
-          // For success rate, show all records
-          url += "";
-          break;
-      }
+        const waitingJson = waitingRes && waitingRes.ok ? await waitingRes.json() : { items: [] };
+        const violatedJson = violatedRes && violatedRes.ok ? await violatedRes.json() : { items: [] };
 
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        let filteredRecords = data.items || [];
+        const waitingItems = Array.isArray(waitingJson.items) ? waitingJson.items : [];
+        const violatedItems = Array.isArray(violatedJson.items) ? violatedJson.items : [];
 
-        // For completed today, filter by today's date
-        if (metricType === "completed") {
-          const today = new Date();
-          const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-          filteredRecords = filteredRecords.filter((record: any) => {
-            if (!record.updatedAt) return false;
-            const recordDate = new Date(record.updatedAt).toISOString().split('T')[0];
-            return recordDate === todayStr;
-          });
+        // Merge and deduplicate by recordId or id
+        const combined = [...waitingItems, ...violatedItems];
+        const uniqueById: Record<string, any> = {};
+        combined.forEach((r: any) => {
+          const key = String(r.recordId ?? r.id ?? JSON.stringify(r));
+          if (!uniqueById[key]) uniqueById[key] = r;
+        });
+
+        setMetricRecords(Object.values(uniqueById));
+      } else {
+        let url = "/api/records?pageSize=10";
+
+        switch (metricType) {
+          case "violations":
+            url += "&status=violated";
+            break;
+          case "completed":
+            // For completed today, get more recent completed records to filter by today
+            url += "&status=completed&pageSize=20";
+            break;
+          case "success":
+            // For success rate, show all records
+            url += "";
+            break;
         }
 
-        setMetricRecords(filteredRecords);
-      } else {
-        setMetricRecords([]);
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          let filteredRecords = data.items || [];
+
+          // For completed today, filter by today's date
+          if (metricType === "completed") {
+            const today = new Date();
+            const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD format
+            filteredRecords = filteredRecords.filter((record: any) => {
+              if (!record.updatedAt) return false;
+              const recordDate = new Date(record.updatedAt).toISOString().split("T")[0];
+              return recordDate === todayStr;
+            });
+          }
+
+          setMetricRecords(filteredRecords);
+        } else {
+          setMetricRecords([]);
+        }
       }
     } catch (error) {
       console.error("Error loading metric records:", error);

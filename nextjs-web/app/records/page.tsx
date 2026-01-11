@@ -38,7 +38,7 @@ export default function RecordsPage() {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(5);
+  const [pageSize] = useState(30);
   const [total, setTotal] = useState(0);
   const [countAll, setCountAll] = useState<number>(0);
   const [countWaiting, setCountWaiting] = useState<number>(0);
@@ -433,7 +433,7 @@ export default function RecordsPage() {
                           <Badge
                             className="inline-block px-2 py-1 text-sm"
                             variant={record.status === "violated" ? "destructive" : record.status === "completed" ? "default" : "secondary"}
-                          >
+                            >
                     {statusLabel(record.status)}
                             </Badge>
                           </TableCell>
@@ -514,7 +514,7 @@ export default function RecordsPage() {
                     <div className="mt-1">
                       <Badge variant={selectedRecord.status === "violated" ? "destructive" : selectedRecord.status === "completed" ? "default" : "secondary"}>
                         {statusLabel(selectedRecord.status)}
-                      </Badge>
+                          </Badge>
                     </div>
                   </div>
                   <div>

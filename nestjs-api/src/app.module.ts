@@ -17,11 +17,11 @@ import { RecordModule } from "./modules/record/record.module";
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
         type: "postgres",
-        host: "postgres",
-        port: 5432,
-        username: process.env.POSTGRES_USER,
-        password: process.env.POSTGRES_PASSWORD,
-        database: process.env.POSTGRES_DB,
+        host: process.env.TYPEORM_HOST || process.env.POSTGRES_HOST || "postgres",
+        port: Number(process.env.TYPEORM_PORT || process.env.POSTGRES_PORT || 5432),
+        username: process.env.TYPEORM_USERNAME || process.env.POSTGRES_USER,
+        password: process.env.TYPEORM_PASSWORD || process.env.POSTGRES_PASSWORD,
+        database: process.env.TYPEORM_DATABASE || process.env.POSTGRES_DB,
         autoLoadEntities: true,
         synchronize: false,
       }),

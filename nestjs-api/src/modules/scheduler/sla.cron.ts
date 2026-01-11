@@ -8,7 +8,7 @@ export class SlaCronJob {
 
   constructor(private readonly slaTrackingService: SlaTrackingService) {}
 
-  @Cron(CronExpression.EVERY_4_HOURS)
+  @Cron(CronExpression.EVERY_WEEKEND)
   // @Cron(CronExpression.EVERY_10_SECONDS)
   async handleCron() {
     await this.runSlaCheck();

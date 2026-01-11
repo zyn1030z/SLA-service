@@ -452,8 +452,7 @@ export class RecordService {
 
   async list(query: ListRecordsQuery) {
     const page = Math.max(1, Number(query.page || 1));
-    // const pageSize = Math.min(100, Math.max(1, Number(query.pageSize || 5)));
-    const pageSize = 5;
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize || 30)));
 
     const where: FindOptionsWhere<RecordEntity> = {};
     if (query.status) {
