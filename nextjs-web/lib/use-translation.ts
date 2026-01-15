@@ -45,7 +45,6 @@ const translations = {
     "dashboard.recentViolations": "Recent Violations",
     "dashboard.quickActions": "Quick Actions",
     "dashboard.viewAllWorkflows": "View All Workflows",
-    "dashboard.viewAllRecords": "View All Records",
     "dashboard.exportReports": "Export Reports",
     "dashboard.configureSlaRules": "Configure SLA Rules",
     "dashboard.violationsDetected": "SLA violations detected",
@@ -75,7 +74,6 @@ const translations = {
     "dashboard.noRecentViolations": "No recent violations found",
     "dashboard.commonTasks": "Common tasks and operations",
     "dashboard.allRecords": "All Records",
-    "dashboard.viewAllRecords": "View All Records",
     "dashboard.noRecordsFound": "No records found for this metric",
     "common.refresh": "Refresh",
     "common.loading": "Loading...",
@@ -496,7 +494,7 @@ const translations = {
 };
 
 export function useTranslation() {
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<Language>("vi");
 
   useEffect(() => {
     if (typeof window !== "undefined") {

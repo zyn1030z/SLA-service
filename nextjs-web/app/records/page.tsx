@@ -81,7 +81,13 @@ export default function RecordsPage() {
       setRecords(data.items || []);
         const totalCount = data.total ?? (data.items ? data.items.length : 0);
         setTotal(totalCount);
-        setCountAll(totalCount); // keep counts in sync when loading paged data
+        // Do not overwrite global `countAll` when loading filtered/paged data.
+        // `countAll` should reflect the overall total across all statuses and is
+        // loaded via `loadCounts()`. Overwriting it here causes the "Tổng bản ghi"
+        // card to change when a report card is selected.
+        if (!selectedReport || selectedReport === "all") {
+          setCountAll(totalCount);
+        }
       } else {
         setRecords([]);
         setTotal(0);
@@ -471,7 +477,26 @@ export default function RecordsPage() {
           </div>
  
       {/* Record detail dialog */}
-      <AlertDialog open={showDetail} onOpenChange={(open) => { setShowDetail(open); if (!open) setSelectedRecord(null); }}>
+      <AlertDialog
+        open={showDetail}
+        onOpenChange={(open: boolean) => {
+          setShowDetail(open);
+          if (!open) {
+            setSelectedRecord(null);
+            // Refresh counts and records when the dialog closes so cards reflect latest data
+            try {
+              loadCounts();
+            } catch (e) {
+              // ignore; loadCounts is a safe async function
+            }
+            try {
+              loadRecords();
+            } catch (e) {
+              // ignore
+            }
+          }
+        }}
+      >
       <AlertDialogContent className="w-full max-w-4xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg">Chi tiết bản ghi</AlertDialogTitle>

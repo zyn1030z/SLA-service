@@ -712,7 +712,10 @@ export class SlaTrackingService {
 
     const qb = this.slaActionLogRepository
       .createQueryBuilder("log")
-      .orderBy("log.created_at", "DESC")
+      .leftJoin(WorkflowEntity, "workflow", "workflow.id = log.workflowId")
+      .leftJoin(ActivityEntity, "activity", "activity.id = log.activityId")
+      .leftJoin(RecordEntity, "record", "record.recordId = log.recordId")
+      .orderBy("log.createdAt", "DESC")
       .skip((page - 1) * pageSize)
       .take(pageSize);
 
@@ -731,7 +734,10 @@ export class SlaTrackingService {
           OR CAST(log.workflow_id AS TEXT) ILIKE :search
           OR CAST(log.activity_id AS TEXT) ILIKE :search
           OR CAST(log.violation_count AS TEXT) ILIKE :search
-          OR CAST(log.is_success AS TEXT) ILIKE :search)`,
+          OR CAST(log.is_success AS TEXT) ILIKE :search
+          OR workflow.workflowName ILIKE :search
+          OR activity.name ILIKE :search
+          OR CAST(record.userApprove AS TEXT) ILIKE :search)`,
         { search }
       );
     }
@@ -800,8 +806,25 @@ export class SlaTrackingService {
       })
     );
 
+    // Fetch userApprove from records
+    const recordIds = Array.from(new Set(items.map((log) => log.recordId)));
+    let recordMap = new Map<string, any>();
+    
+    if (recordIds.length > 0) {
+      const records = await this.recordRepository.find({
+        where: { recordId: In(recordIds) },
+        select: ["recordId", "userApprove"],
+      });
+      recordMap = new Map(records.map((r) => [r.recordId, r.userApprove]));
+    }
+
+    const finalItems = itemsWithActivityName.map((item) => ({
+      ...item,
+      assignees: recordMap.get(item.recordId) || [],
+    }));
+
     return {
-      items: itemsWithActivityName,
+      items: finalItems,
       total,
       page,
       pageSize,

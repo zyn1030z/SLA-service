@@ -9,6 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +49,11 @@ interface SlaActionLog {
   message: string | null;
   createdAt: string;
   updatedAt: string;
+  assignees?: Array<{
+    id: number;
+    name: string;
+    login: string;
+  }>;
 }
 
 interface ApiResponse {
@@ -74,6 +85,7 @@ const SlaActionLogsPage = () => {
   const [actionType, setActionType] = useState<"" | ActionType>("");
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedLog, setSelectedLog] = useState<SlaActionLog | null>(null);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -191,25 +203,51 @@ const SlaActionLogsPage = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.recordId")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.workflowName")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.activityId")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.actionType")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.violationCount")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.success")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.message")}</TableHead>
-                    <TableHead className="whitespace-nowrap">{t("slaLogs.createdAt")}</TableHead>
+                     <TableHead className="whitespace-nowrap">ID Bản ghi</TableHead>
+                     <TableHead className="whitespace-nowrap">Người dùng</TableHead>
+                     <TableHead className="whitespace-nowrap">Tên quy trình</TableHead>
+                    <TableHead className="whitespace-nowrap">ID Hoạt động</TableHead>
+                    <TableHead className="whitespace-nowrap">Loại hành động</TableHead>
+                    <TableHead className="whitespace-nowrap">Số lần vi phạm</TableHead>
+                    <TableHead className="whitespace-nowrap">Thành công</TableHead>
+                    <TableHead className="whitespace-nowrap">Thông điệp</TableHead>
+                    <TableHead className="whitespace-nowrap">Thời gian tạo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {logs.map((log) => (
-                    <TableRow
-                      key={log.id}
-                      className={log.isSuccess ? "bg-green-50" : "bg-red-50"}
-                    >
-                      <TableCell className="whitespace-nowrap font-medium">
-                        {log.recordId}
-                      </TableCell>
+                      <TableRow
+                        key={log.id}
+                        className={`${
+                          log.isSuccess ? "bg-green-50" : "bg-red-50"
+                        } cursor-pointer hover:bg-muted/50 transition-colors`}
+                        onClick={() => setSelectedLog(log)}
+                      >
+                        <TableCell className="whitespace-nowrap font-medium">
+                          {log.recordId}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate" title={log.assignees?.map(u => u.name).join(", ")}>
+                          {log.assignees && log.assignees.length > 0 ? (
+                            <div className="flex -space-x-2 overflow-hidden">
+                              {log.assignees.slice(0, 3).map((user) => (
+                                <div
+                                  key={user.id}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white bg-gray-100 text-[10px] font-medium text-gray-800 ring-2 ring-white"
+                                  title={`${user.name} (${user.login})`}
+                                >
+                                  {user.name.charAt(0).toUpperCase()}
+                                </div>
+                              ))}
+                              {log.assignees.length > 3 && (
+                                <div className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white bg-gray-100 text-[10px] font-medium text-gray-800 ring-2 ring-white">
+                                  +{log.assignees.length - 3}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {log.workflowName ?? log.workflowId ?? "-"}
                       </TableCell>
@@ -287,6 +325,82 @@ const SlaActionLogsPage = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{ "Chi tiết Log"}</DialogTitle>
+          </DialogHeader>
+          {selectedLog && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">ID Bản ghi</h4>
+                  <p className="text-sm font-semibold">{selectedLog.recordId}</p>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">Thời gian tạo</h4>
+                  <p className="text-sm">{formatDateTime(selectedLog.createdAt)}</p>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">Quy trình</h4>
+                  <p className="text-sm">{selectedLog.workflowName ?? selectedLog.workflowId ?? "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">ID Hoạt động</h4>
+                  <p className="text-sm">{selectedLog.activityId ?? "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">Loại hành động</h4>
+                  <Badge variant={selectedLog.actionType === "notify" ? "secondary" : "default"}>
+                    {selectedLog.actionType === "notify" ? t("slaLogs.notify") : t("slaLogs.autoApprove")}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">Số lần vi phạm</h4>
+                  <p className="text-sm">{selectedLog.violationCount}</p>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-muted-foreground">Trạng thái</h4>
+                  <Badge variant={selectedLog.isSuccess ? "default" : "destructive"}>
+                    {selectedLog.isSuccess ? t("slaLogs.successYes") : t("slaLogs.successNo")}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Thông điệp</h4>
+                <div className="rounded-md bg-muted p-3 text-sm">
+                  {translateMessage(selectedLog.message) || "-"}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Người dùng vi phạm (Assignees)</h4>
+                {selectedLog.assignees && selectedLog.assignees.length > 0 ? (
+                  <div className="rounded-md border p-3">
+                    <ul className="space-y-2">
+                      {selectedLog.assignees.map((user) => (
+                        <li key={user.id} className="flex items-center gap-2 text-sm">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{user.name}</span>
+                            <span className="text-xs text-muted-foreground">{user.login}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Không tìm thấy người dùng được gán.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 };

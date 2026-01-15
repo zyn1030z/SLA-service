@@ -550,11 +550,36 @@ export class RecordService {
         workflowId: where.workflowId,
       });
     if (query.search) {
+      // Perform case-insensitive contains search across many columns by casting
+      // columns to text and using ILIKE with wildcards. This avoids full-text
+      // search but still lets users search all table columns.
       const s = `%${query.search}%`;
-      qb.andWhere(
-        "(r.record_id ILIKE :s OR r.workflow_name ILIKE :s OR r.step_name ILIKE :s)",
-        { s }
-      );
+      const cols = [
+        "record_id",
+        "model",
+        "workflow_name",
+        "step_code",
+        "step_name",
+        "status",
+        "violation_count",
+        "sla_hours",
+        "remaining_hours",
+        "user_approve",
+        "approved_at",
+        "next_due_at",
+        "created_at",
+        "updated_at"
+      ];
+
+      const conditions = cols
+        .map((c) => `COALESCE(CAST(r.${c} AS TEXT), '') ILIKE :s`)
+        .join(" OR ");
+
+      // Also search inside the user_approve JSONB array for name/login values
+      const jsonbApproverCondition =
+        "EXISTS (SELECT 1 FROM jsonb_array_elements(r.user_approve) elem WHERE (elem->>'name') ILIKE :s OR (elem->>'login') ILIKE :s)";
+
+      qb.andWhere(`(${conditions} OR ${jsonbApproverCondition})`, { s });
     }
     if (query.step) {
       qb.andWhere("r.step_name = :step", { step: query.step });
