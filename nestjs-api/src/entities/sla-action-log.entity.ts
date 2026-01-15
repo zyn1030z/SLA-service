@@ -5,7 +5,10 @@ import {
   Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from "typeorm";
+import { RecordEntity } from "./record.entity";
 
 @Entity("sla_action_logs")
 @Index(["recordId", "actionType"])
@@ -36,6 +39,10 @@ export class SlaActionLogEntity {
 
   @Column({ name: "message", type: "text", nullable: true })
   message!: string | null;
+
+  @ManyToOne(() => RecordEntity, { createForeignKeyConstraints: false })
+  @JoinColumn({ name: "record_id", referencedColumnName: "recordId" })
+  record?: RecordEntity;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

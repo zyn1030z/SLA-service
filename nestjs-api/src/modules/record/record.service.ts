@@ -257,10 +257,10 @@ export class RecordService {
         const [year, month, day] = datePart.split("-").map(Number);
         const [hours, minutes, seconds] = timePart.split(":").map(Number);
 
-        // Tạo Date object theo UTC để tránh timezone conversion
-        // Sử dụng Date.UTC() để tạo UTC timestamp
+        // Tạo Date object theo UTC, nhưng trừ đi 7 giờ vì input là giờ Việt Nam (UTC+7)
+        // Ví dụ: 15:40 VN -> 08:40 UTC
         startTime = new Date(
-          Date.UTC(year, month - 1, day, hours, minutes, seconds || 0)
+          Date.UTC(year, month - 1, day, hours - 7, minutes, seconds || 0)
         );
 
         // Kiểm tra nếu parse sai (Invalid Date)
@@ -464,8 +464,9 @@ export class RecordService {
         const [datePart, timePart] = timeStr.split(" ");
         const [year, month, day] = datePart.split("-").map(Number);
         const [hours, minutes, seconds] = timePart.split(":").map(Number);
+        // Trừ 7 giờ để convert từ VN Local Time sang UTC
         startTime = new Date(
-          Date.UTC(year, month - 1, day, hours, minutes, seconds || 0)
+          Date.UTC(year, month - 1, day, hours - 7, minutes, seconds || 0)
         );
       } else {
         startTime = new Date(payload.startTime);

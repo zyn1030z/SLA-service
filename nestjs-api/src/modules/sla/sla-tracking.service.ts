@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { In, Repository } from "typeorm";
+import { Brackets, In, Repository } from "typeorm";
 import { RecordEntity } from "../../entities/record.entity";
 import { ActivityEntity } from "../../entities/activity.entity";
 import { OdooService } from "../odoo/odoo.service";
@@ -12,6 +12,8 @@ export interface ListActionLogsQuery {
   pageSize?: number;
   actionType?: "notify" | "auto_approve";
   search?: string;
+  isSuccess?: boolean;
+  assignee?: string;
 }
 
 @Injectable()
@@ -183,25 +185,36 @@ export class SlaTrackingService {
    * @param end - Thời điểm kết thúc
    * @returns Tổng số giờ hành chính (có thể là số thập phân)
    */
+  /**
+   * Tính số giờ hành chính giữa hai thời điểm
+   *
+   * Chỉ tính các khoảng thời gian nằm trong giờ hành chính từ 08:00 đến 17:00 (thứ 2-6)
+   * hoặc từ 08:00 đến 12:00 (thứ 7 sáng).
+   * Không tính thời gian ngoài khung giờ hành chính.
+   * Nếu start hoặc end nằm ngoài giờ hành chính thì chỉ tính phần giao với giờ hành chính.
+   * Chỉ tính từ thứ 2 đến sáng thứ 7 (trước 12h), không tính thứ 7 từ 12h trở đi và chủ nhật.
+   *
+   * @param start - Thời điểm bắt đầu (UTC)
+   * @param end - Thời điểm kết thúc (UTC)
+   * @returns Tổng số giờ hành chính (có thể là số thập phân)
+   */
   public calculateBusinessHoursBetween(start: Date, end: Date): number {
-    // Kiểm tra điều kiện cơ bản
     if (end <= start) {
       return 0;
     }
 
-    // Lấy thông tin ngày của start và end
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    // Convert sang Business Timezone (UTC+7, nhưng giữ object Date như UTC để tính toán theo giờ 8-17)
+    const startDateShifted = this.toBusinessTimezone(start);
+    const endDateShifted = this.toBusinessTimezone(end);
 
-    // Kiểm tra nếu start hoặc end không phải ngày làm việc hợp lệ
+    // Kiểm tra nếu start hoặc end không phải ngày làm việc hợp lệ (dùng giờ shifted)
     if (
-      !this.isValidBusinessDay(startDate) &&
-      !this.isValidBusinessDay(endDate)
+      !this.isValidBusinessDayShifted(startDateShifted) &&
+      !this.isValidBusinessDayShifted(endDateShifted)
     ) {
-      // Nếu cả hai đều không hợp lệ, kiểm tra xem có ngày hợp lệ nào ở giữa không
-      const startDay = new Date(startDate);
+      const startDay = new Date(startDateShifted);
       startDay.setUTCHours(0, 0, 0, 0);
-      const endDay = new Date(endDate);
+      const endDay = new Date(endDateShifted);
       endDay.setUTCHours(0, 0, 0, 0);
 
       // Nếu cùng ngày và cả hai đều không hợp lệ, return 0
@@ -211,25 +224,24 @@ export class SlaTrackingService {
     }
 
     let totalHours = 0;
-    let current = new Date(startDate);
+    let current = new Date(startDateShifted);
 
-    // Duyệt qua từng ngày từ start đến end
-    while (current < endDate) {
+    // Duyệt qua từng ngày (theo Business Timezone)
+    while (current < endDateShifted) {
       const currentDay = new Date(current);
       currentDay.setUTCHours(0, 0, 0, 0);
       const nextDay = new Date(currentDay);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
       // Kiểm tra xem ngày hiện tại có phải ngày làm việc hợp lệ không
-      if (!this.isValidBusinessDay(current)) {
+      if (!this.isValidBusinessDayShifted(current)) {
         // Nếu không hợp lệ, chuyển sang ngày tiếp theo
         current = nextDay;
         current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
         continue;
       }
 
-      const dayOfWeek = current.getUTCDay();
-      const businessEndHour = this.getBusinessEndHourForDay(current);
+      const businessEndHour = this.getBusinessEndHourForDay(current); // Day is from shifted date, so getUTCDay returns correct local day
 
       // Xác định thời điểm bắt đầu tính trong ngày
       let dayStartHour = current.getUTCHours();
@@ -237,7 +249,7 @@ export class SlaTrackingService {
 
       // Nếu đây là ngày đầu tiên và start < 8h, bắt đầu từ 8h
       if (
-        current.getTime() === startDate.getTime() &&
+        current.getTime() === startDateShifted.getTime() &&
         dayStartHour < this.BUSINESS_START_HOUR
       ) {
         dayStartHour = this.BUSINESS_START_HOUR;
@@ -249,14 +261,14 @@ export class SlaTrackingService {
       let dayEndMinute: number;
 
       // Kiểm tra xem end có nằm trong cùng ngày không
-      const endDay = new Date(endDate);
+      const endDay = new Date(endDateShifted);
       endDay.setUTCHours(0, 0, 0, 0);
       const isLastDay = currentDay.getTime() === endDay.getTime();
 
       if (isLastDay) {
         // Cùng ngày: tính đến end (nhưng không vượt quá businessEndHour)
-        dayEndHour = endDate.getUTCHours();
-        dayEndMinute = endDate.getUTCMinutes();
+        dayEndHour = endDateShifted.getUTCHours();
+        dayEndMinute = endDateShifted.getUTCMinutes();
 
         // Giới hạn không vượt quá businessEndHour
         if (
@@ -293,8 +305,27 @@ export class SlaTrackingService {
       current.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
     }
 
-    // Làm tròn đến 2 chữ số thập phân để tránh lỗi floating point
     return Math.round(totalHours * 100) / 100;
+  }
+
+  /**
+   * Helper check Business Day trên date đã được shift sang Business Timezone
+   */
+  private isValidBusinessDayShifted(shiftedDate: Date): boolean {
+    const day = shiftedDate.getUTCDay(); // 0: Sun, 6: Sat
+    const hour = shiftedDate.getUTCHours();
+
+    if (day >= 1 && day <= 5) {
+      return true;
+    }
+    if (day === 6) {
+        // Thứ 7: chỉ làm việc sáng đến 12h
+        // Tuy nhiên check Valid cho ngày thì vẫn là Valid nếu còn giờ làm việc?
+        // Logic cũ: return hour < 12;
+        // Nếu hour >= 12 thì coi như hết ngày làm việc?
+      return hour < 12;
+    }
+    return false;
   }
 
   /**
@@ -305,66 +336,119 @@ export class SlaTrackingService {
    * - Thứ 7 sáng: 8h-12h
    * - Không tính thứ 7 từ 12h trở đi và chủ nhật
    *
-   * Nếu thời gian đẩy lên trong khung giờ hành chính mà chưa đủ thời gian SLA,
-   * thì tính đến giờ kết thúc của ngày + thời gian từ 8h sáng ngày làm việc tiếp theo
+   * @returns Date (UTC)
    */
   public calculateNextDueAt(
     startTime: Date,
     slaHours: number,
     violationCount: number = 0
   ): Date {
-    let current: Date;
+    // Làm việc trên Business Timezone
+    let current = this.toBusinessTimezone(startTime);
     let remainingSlaHours = slaHours * (violationCount + 1);
 
-    // Nếu startTime nằm trong giờ hành chính, kiểm tra xem có đủ thời gian không
-    if (this.isBusinessHours(startTime)) {
-      // Tính thời điểm kết thúc giờ hành chính trong ngày
-      const startDay = new Date(startTime);
-      startDay.setUTCHours(0, 0, 0, 0);
-      const endOfDay = new Date(startDay);
-      const businessEndHour = this.getBusinessEndHourForDay(startTime);
-      endOfDay.setUTCHours(businessEndHour, 0, 0, 0);
-
-      const hoursUntilEndOfDay =
-        (endOfDay.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
-      if (hoursUntilEndOfDay < remainingSlaHours) {
-        // Không đủ thời gian trong ngày, tính đến giờ kết thúc + thời gian từ 8h sáng hôm sau
-        remainingSlaHours -= hoursUntilEndOfDay;
-        // Chuyển sang 8h sáng ngày làm việc kế tiếp
-        current = this.moveToNextBusinessDay(endOfDay);
-      } else {
-        // Đủ thời gian trong ngày, bắt đầu từ startTime
-        current = new Date(startTime);
-      }
+    // Chuẩn hóa current về giờ hành chính nếu nó đang nằm ngoài
+    // Logic: Nếu nằm ngoài giờ hành chính thì đẩy nó tới 8h sáng ngày làm việc tiếp theo
+    if (!this.isBusinessHoursShifted(current)) {
+        current = this.normalizeToBusinessStartShifted(current);
     } else {
-      // StartTime nằm ngoài giờ hành chính, đưa về đầu giờ hành chính gần nhất
-      current = this.normalizeToBusinessStart(startTime);
+        // Nếu nằm TRONG giờ hành chính
+        // Kiểm tra xem từ giờ đến hết ngày còn bao nhiêu giờ
+        const businessEndHour = this.getBusinessEndHourForDay(current);
+        // Số giờ còn lại trong ngày hôm nay
+        // Note: current.getUTCHours() ở đây là Local Hour
+        const currentHour = current.getUTCHours();
+        const currentMinute = current.getUTCMinutes();
+        const hoursUntilEndOfDay = (businessEndHour * 60 - (currentHour * 60 + currentMinute)) / 60;
+
+         if (hoursUntilEndOfDay < remainingSlaHours) {
+            remainingSlaHours -= hoursUntilEndOfDay;
+            // Hết ngày, chuyển sang 8h sáng ngày làm việc kế tiếp
+            // move to end of day first
+            current.setUTCHours(businessEndHour, 0, 0, 0); 
+            // Then move next
+            current = this.moveToNextBusinessDayShifted(current);
+         } else {
+            // Đủ thời gian trong ngày nay
+             // Không làm gì cả, Logic while bên dưới sẽ xử lý
+         }
     }
 
     // Tính thời điểm đến hạn bằng cách cộng dần số giờ hành chính còn lại
     while (remainingSlaHours > 0) {
-      // Lấy giờ kết thúc của ngày hiện tại
       const businessEndHour = this.getBusinessEndHourForDay(current);
       const currentHour = current.getUTCHours();
+      const currentMinute = current.getUTCMinutes();
+      
+      const timeLeftInDay = (businessEndHour * 60 - (currentHour * 60 + currentMinute)) / 60;
 
-      // Tính số giờ có thể dùng trong ngày hiện tại
-      const hoursInCurrentDay = Math.min(
-        remainingSlaHours,
-        businessEndHour - currentHour
-      );
-
-      // Cộng số giờ vào thời điểm hiện tại
-      current.setUTCHours(current.getUTCHours() + hoursInCurrentDay);
-      remainingSlaHours -= hoursInCurrentDay;
-
-      if (remainingSlaHours > 0) {
-        // Chưa hết SLA, chuyển sang 8h sáng ngày làm việc kế tiếp
-        current = this.moveToNextBusinessDay(current);
+      if (timeLeftInDay >= remainingSlaHours) {
+          // Đủ thời gian trong ngày hiện tại
+          const minutesToAdd = remainingSlaHours * 60;
+          current.setUTCMinutes(current.getUTCMinutes() + minutesToAdd);
+          remainingSlaHours = 0;
+      } else {
+          // Không đủ, dùng hết ngày nay rồi sang ngày mai
+          remainingSlaHours -= timeLeftInDay;
+          current = this.moveToNextBusinessDayShifted(current);
       }
     }
 
-    return current;
+    // Convert ngược lại UTC trước khi trả về
+    return this.fromBusinessTimezone(current);
+  }
+
+  // Helpers riêng cho Shifted Date
+  private isBusinessHoursShifted(shiftedDate: Date): boolean {
+      if (!this.isValidBusinessDayShifted(shiftedDate)) {
+          return false;
+      }
+      const hour = shiftedDate.getUTCHours();
+      const businessEndHour = this.getBusinessEndHourForDay(shiftedDate);
+      return hour >= this.BUSINESS_START_HOUR && hour < businessEndHour;
+  }
+
+  private normalizeToBusinessStartShifted(shiftedDate: Date): Date {
+      let normalized = new Date(shiftedDate);
+      const hour = normalized.getUTCHours();
+      const day = normalized.getUTCDay();
+      const businessEndHour = this.getBusinessEndHourForDay(normalized);
+
+      // Nếu là chủ nhật hoặc thứ 7 từ 12h trở đi, chuyển sang thứ 2
+      if (day === 0 || (day === 6 && hour >= 12)) {
+          normalized = this.moveToNextBusinessDayShifted(normalized);
+          return normalized;
+      }
+
+      if (hour < this.BUSINESS_START_HOUR) {
+          // Trước 8h sáng, đưa về 8h sáng cùng ngày
+          normalized.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0);
+      } else if (hour >= businessEndHour) {
+          // Sau giờ kết thúc, chuyển sang ngày tiếp theo (8h)
+          normalized = this.moveToNextBusinessDayShifted(normalized);
+      } else {
+          // Trong giờ hành chính, giữ nguyên (nhưng thường hàm này gọi khi ngoài giờ HC)
+          // Reset phút giây? Không cần thiết nếu logic gọi đúng
+          normalized.setUTCMinutes(0, 0, 0);
+      }
+      return normalized;
+  }
+
+  private moveToNextBusinessDayShifted(shiftedDate: Date): Date {
+      const next = new Date(shiftedDate);
+      // Nếu đang là cuối ngày làm việc (ví dụ 17h), +1 day và set 8h
+      // Hoặc nếu đang là Chủ Nhật, +1 day check valid
+      
+      // Đơn giản: cứ tăng ngày cho đến khi valid, rồi set 8h
+      // Tuy nhiên cần cẩn thận mốc bắt đầu.
+      // Reset về 8h sáng ngay khi sang ngày mới
+      
+      next.setUTCHours(this.BUSINESS_START_HOUR, 0, 0, 0); // Set 8h trước
+      do {
+          next.setUTCDate(next.getUTCDate() + 1); // +1 ngày
+      } while (!this.isValidBusinessDayShifted(next)); // Check nếu ngày đó có phải ngày làm việc
+      
+      return next;
   }
 
   /**
@@ -714,120 +798,51 @@ export class SlaTrackingService {
       .createQueryBuilder("log")
       .leftJoin(WorkflowEntity, "workflow", "workflow.id = log.workflowId")
       .leftJoin(ActivityEntity, "activity", "activity.id = log.activityId")
-      .leftJoin(RecordEntity, "record", "record.recordId = log.recordId")
-      .orderBy("log.createdAt", "DESC")
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+      .leftJoinAndSelect("log.record", "record")
+      .orderBy("log.createdAt", "DESC");
 
     if (query.actionType) {
-      qb.andWhere("log.action_type = :actionType", {
-        actionType: query.actionType,
-      });
+      qb.andWhere("log.actionType = :actionType", { actionType: query.actionType });
+    }
+
+    if (query.isSuccess !== undefined) {
+      qb.andWhere("log.isSuccess = :isSuccess", { isSuccess: query.isSuccess });
+    }
+
+    if (query.assignee) {
+      qb.andWhere(
+        "EXISTS (SELECT 1 FROM jsonb_array_elements(record.user_approve) elem WHERE (elem->>'name') ILIKE :assignee OR (elem->>'login') ILIKE :assignee)",
+        { assignee: `%${query.assignee}%` }
+      );
     }
 
     if (query.search) {
-      const search = `%${query.search}%`;
       qb.andWhere(
-        `(log.record_id ILIKE :search
-          OR COALESCE(log.message, '') ILIKE :search
-          OR log.action_type ILIKE :search
-          OR CAST(log.workflow_id AS TEXT) ILIKE :search
-          OR CAST(log.activity_id AS TEXT) ILIKE :search
-          OR CAST(log.violation_count AS TEXT) ILIKE :search
-          OR CAST(log.is_success AS TEXT) ILIKE :search
-          OR workflow.workflowName ILIKE :search
-          OR activity.name ILIKE :search
-          OR CAST(record.userApprove AS TEXT) ILIKE :search)`,
-        { search }
+        new Brackets((qb) => {
+          qb.where("record.recordId ILike :search", { search: `%${query.search}%` })
+            .orWhere("workflow.workflowName ILike :search", { search: `%${query.search}%` })
+            .orWhere("log.message ILike :search", { search: `%${query.search}%` });
+        })
       );
     }
+    
+    qb.skip((page - 1) * pageSize).take(pageSize);
 
     const [items, total] = await qb.getManyAndCount();
 
-    const workflowIds = Array.from(
-      new Set(
-        items
-          .map((log: SlaActionLogEntity) => log.workflowId)
-          .filter((id: number | null): id is number => typeof id === "number")
-      )
-    );
-
-    let workflowNameMap = new Map<number, string>();
-
-    if (workflowIds.length > 0) {
-      const workflows = await this.workflowRepository.find({
-        where: { id: In(workflowIds) },
-        select: ["id", "workflowName"],
-      });
-      workflowNameMap = new Map(
-        workflows.map((workflow: WorkflowEntity) => [
-          workflow.id,
-          workflow.workflowName,
-        ])
-      );
-    }
-
-    const itemsWithWorkflowName = items.map((log: SlaActionLogEntity) => ({
-      ...log,
-      workflowName:
-        typeof log.workflowId === "number"
-          ? workflowNameMap.get(log.workflowId) ?? null
-          : null,
-    }));
-
-    const activityIds = Array.from(
-      new Set(
-        items
-          .map((log: SlaActionLogEntity) => log.activityId)
-          .filter((id: number | null): id is number => typeof id === "number")
-      )
-    );
-    let activityNameMap = new Map<number, string>();
-    if (activityIds.length > 0) {
-      const activities = await this.activityRepository.find({
-        where: { id: In(activityIds) },
-        select: ["id", "name"],
-      });
-      activityNameMap = new Map(
-        activities.map((activity: ActivityEntity) => [
-          activity.id,
-          activity.name,
-        ])
-      );
-    }
-
-    const itemsWithActivityName = itemsWithWorkflowName.map(
-      (item: SlaActionLogEntity & { workflowName: string | null }) => ({
+    // Map items to include assignees from record
+    const mappedItems = items.map(item => ({
         ...item,
-        activityName:
-          typeof item.activityId === "number"
-            ? activityNameMap.get(item.activityId) ?? null
-            : null,
-      })
-    );
-
-    // Fetch userApprove from records
-    const recordIds = Array.from(new Set(items.map((log) => log.recordId)));
-    let recordMap = new Map<string, any>();
-    
-    if (recordIds.length > 0) {
-      const records = await this.recordRepository.find({
-        where: { recordId: In(recordIds) },
-        select: ["recordId", "userApprove"],
-      });
-      recordMap = new Map(records.map((r) => [r.recordId, r.userApprove]));
-    }
-
-    const finalItems = itemsWithActivityName.map((item) => ({
-      ...item,
-      assignees: recordMap.get(item.recordId) || [],
+        assignees: item.record?.userApprove || []
     }));
 
     return {
-      items: finalItems,
+      items: mappedItems,
       total,
       page,
       pageSize,
     };
   }
 }
+
+

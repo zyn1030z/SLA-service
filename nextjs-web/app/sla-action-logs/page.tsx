@@ -82,9 +82,16 @@ const SlaActionLogsPage = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  
+  // Filters
   const [actionType, setActionType] = useState<"" | ActionType>("");
+  const [isSuccess, setIsSuccess] = useState<"all" | "true" | "false">("all");
+  const [userSearch, setUserSearch] = useState("");
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  
   const [selectedLog, setSelectedLog] = useState<SlaActionLog | null>(null);
 
   const loadLogs = useCallback(async () => {
@@ -94,6 +101,8 @@ const SlaActionLogsPage = () => {
     params.set("pageSize", String(pageSize));
     if (actionType) params.set("actionType", actionType);
     if (searchTerm) params.set("search", searchTerm);
+    if (isSuccess !== "all") params.set("isSuccess", isSuccess);
+    if (userSearchTerm) params.set("assignee", userSearchTerm);
 
       try {
       const res = await fetch(`/api/sla-action-logs?${params.toString()}`);
@@ -107,7 +116,7 @@ const SlaActionLogsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, actionType, searchTerm]);
+  }, [page, pageSize, actionType, searchTerm, isSuccess, userSearchTerm]);
 
   useEffect(() => {
     loadLogs();
@@ -116,6 +125,17 @@ const SlaActionLogsPage = () => {
   const handleSearch = () => {
     setPage(1);
     setSearchTerm(searchInput.trim());
+    setUserSearchTerm(userSearch.trim());
+  };
+  
+  // Also trigger search when filters change directly (selects)
+  const handleFilterChange = (
+      newActionType?: "" | ActionType, 
+      newIsSuccess?: "all" | "true" | "false"
+  ) => {
+      setPage(1);
+      if (newActionType !== undefined) setActionType(newActionType);
+      if (newIsSuccess !== undefined) setIsSuccess(newIsSuccess);
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -132,273 +152,326 @@ const SlaActionLogsPage = () => {
   };
 
   return (
-    <main className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+    <main className="p-6 max-w-[1600px] mx-auto space-y-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
             {t("slaLogs.title")}
           </h1>
           <p className="text-muted-foreground">{t("slaLogs.subtitle")}</p>
         </div>
-        <div className="flex flex-col md:flex-row gap-2 md:items-center">
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t("slaLogs.searchPlaceholder")}
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSearch();
-                }
-              }}
-              className="pl-8"
-            />
-          </div>
-          <Button variant="default" onClick={handleSearch} className="md:ml-2">
-            <Filter className="h-4 w-4 mr-2" />
-            {t("slaLogs.applyFilters")}
-          </Button>
-        </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <CardTitle>{t("slaLogs.listTitle")}</CardTitle>
-            <CardDescription>{t("slaLogs.listSubtitle")}</CardDescription>
-          </div>
-          <div className="flex flex-col md:flex-row gap-2 md:items-center">
-            <Select
-              value={actionType || "all"}
-              onValueChange={(value) => {
-                setPage(1);
-                setActionType(value === "all" ? "" : (value as ActionType));
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder={t("slaLogs.actionType")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("slaLogs.allTypes")}</SelectItem>
-                <SelectItem value="notify">{t("slaLogs.notify")}</SelectItem>
-                <SelectItem value="auto_approve">
-                  {t("slaLogs.autoApprove")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <Card className="border-none shadow-sm bg-background">
+        <div className="p-1">
+          {/* Toolbar */}
+          <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center p-4 rounded-lg bg-card border mb-4">
+            
+            {/* Search - Primary Action */}
+            <div className="relative w-full xl:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t("slaLogs.searchPlaceholder")}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSearch();
+                }}
+                className="pl-9 bg-background"
+              />
             </div>
-          ) : logs.length === 0 ? (
-            <div className="text-center text-muted-foreground py-12">
-              {t("slaLogs.emptyState")}
+
+            {/* Filter Group */}
+            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto items-center">
+              
+               {/* User Filter */}
+               <div className="relative w-full sm:w-48">
+                  <Input
+                    placeholder="Người dùng..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSearch();
+                    }}
+                    className="pl-3 bg-background"
+                  />
+               </div>
+
+              {/* Status Filter */}
+              <Select
+                value={isSuccess}
+                onValueChange={(value) => handleFilterChange(undefined, value as "all" | "true" | "false")}
+              >
+                <SelectTrigger className="w-full sm:w-[140px] bg-background">
+                  <SelectValue placeholder="Trạng thái" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                  <SelectItem value="true">
+                    <span className="flex items-center text-green-600">
+                      <span className="h-2 w-2 rounded-full bg-green-500 mr-2" />
+                      {t("slaLogs.successYes")}
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="false">
+                     <span className="flex items-center text-red-600">
+                      <span className="h-2 w-2 rounded-full bg-red-500 mr-2" />
+                      {t("slaLogs.successNo")}
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+               {/* Action Type Filter */}
+              <Select
+                value={actionType || "all"}
+                onValueChange={(value: string) => {
+                  setPage(1);
+                  setActionType(value === "all" ? "" : (value as ActionType));
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-[160px] bg-background">
+                  <SelectValue placeholder={t("slaLogs.actionType")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("slaLogs.allTypes")}</SelectItem>
+                  <SelectItem value="notify">{t("slaLogs.notify")}</SelectItem>
+                  <SelectItem value="auto_approve">
+                    {t("slaLogs.autoApprove")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button variant="secondary" onClick={handleSearch} className="whitespace-nowrap w-full sm:w-auto">
+                <Filter className="h-4 w-4 mr-2" />
+                {t("slaLogs.applyFilters")}
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                     <TableHead className="whitespace-nowrap">ID Bản ghi</TableHead>
-                     <TableHead className="whitespace-nowrap">Người dùng</TableHead>
-                     <TableHead className="whitespace-nowrap">Tên quy trình</TableHead>
-                    <TableHead className="whitespace-nowrap">ID Hoạt động</TableHead>
-                    <TableHead className="whitespace-nowrap">Loại hành động</TableHead>
-                    <TableHead className="whitespace-nowrap">Số lần vi phạm</TableHead>
-                    <TableHead className="whitespace-nowrap">Thành công</TableHead>
-                    <TableHead className="whitespace-nowrap">Thông điệp</TableHead>
-                    <TableHead className="whitespace-nowrap">Thời gian tạo</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
+          </div>
+
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="flex items-center justify-center h-96">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : logs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <div className="bg-muted/50 p-4 rounded-full mb-4">
+                  <Search className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="font-semibold text-lg">{t("slaLogs.emptyState")}</h3>
+                <p className="text-muted-foreground max-w-sm mt-2">
+                  Không tìm thấy kết quả nào phù hợp với bộ lọc hiện tại. Hãy thử thay đổi từ khóa hoặc bộ lọc.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[100px] uppercase text-xs font-bold tracking-wider text-muted-foreground pl-4">ID</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Người dùng</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Quy trình</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Activity</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Loại</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-center">Vi phạm</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-center">Trạng thái</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-right pr-4">Thời gian</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
                       <TableRow
                         key={log.id}
-                        className={`${
-                          log.isSuccess ? "bg-green-50" : "bg-red-50"
-                        } cursor-pointer hover:bg-muted/50 transition-colors`}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors group"
                         onClick={() => setSelectedLog(log)}
                       >
-                        <TableCell className="whitespace-nowrap font-medium">
-                          {log.recordId}
+                         <TableCell className="font-medium pl-4 text-primary">
+                          #{log.recordId}
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate" title={log.assignees?.map(u => u.name).join(", ")}>
+                        <TableCell className="max-w-[200px]">
                           {log.assignees && log.assignees.length > 0 ? (
-                            <div className="flex -space-x-2 overflow-hidden">
-                              {log.assignees.slice(0, 3).map((user) => (
-                                <div
-                                  key={user.id}
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white bg-gray-100 text-[10px] font-medium text-gray-800 ring-2 ring-white"
-                                  title={`${user.name} (${user.login})`}
-                                >
-                                  {user.name.charAt(0).toUpperCase()}
-                                </div>
-                              ))}
-                              {log.assignees.length > 3 && (
-                                <div className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white bg-gray-100 text-[10px] font-medium text-gray-800 ring-2 ring-white">
-                                  +{log.assignees.length - 3}
-                                </div>
-                              )}
+                            <div className="flex flex-col">
+                                <span className="text-sm font-medium text-foreground">
+                                    {log.assignees[0].name}
+                                </span>
+                                {log.assignees.length > 1 && (
+                                     <span className="text-xs text-muted-foreground">
+                                        + {log.assignees.length - 1} người khác
+                                     </span>
+                                )}
                             </div>
                           ) : (
-                            <span className="text-muted-foreground">-</span>
+                            <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {log.workflowName ?? log.workflowId ?? "-"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{log.activityId ?? "-"}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <Badge
-                          variant={
-                            log.actionType === "notify"
-                              ? "secondary"
-                              : "default"
-                          }
-                        >
-                          {log.actionType === "notify"
-                            ? t("slaLogs.notify")
-                            : t("slaLogs.autoApprove")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{log.violationCount}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <Badge
-                          variant={log.isSuccess ? "default" : "destructive"}
-                        >
-                          {log.isSuccess
-                            ? t("slaLogs.successYes")
-                            : t("slaLogs.successNo")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-2xl truncate"
-                        title={translateMessage(log.message) || "-"}
-                      >
-                        {translateMessage(log.message) || "-"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground text-sm">
-                        {formatDateTime(log.createdAt)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="text-sm text-muted-foreground">
-                  {total > 0
-                    ? `${t("slaLogs.paginationPrefix")} ${
-                        (page - 1) * pageSize + 1
-                      }-${Math.min(page * pageSize, total)} / ${total}`
-                    : t("slaLogs.emptyState")}
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                    disabled={page === 1}
-                  >
-                    {t("slaLogs.prevPage")}
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {page} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setPage((prev) => (prev < totalPages ? prev + 1 : prev))
-                    }
-                    disabled={page >= totalPages}
-                  >
-                    {t("slaLogs.nextPage")}
-                  </Button>
-                </div>
+                        <TableCell className="text-sm font-medium">
+                          {log.workflowName ?? log.workflowId ?? "-"}
+                        </TableCell>
+                         <TableCell className="text-sm text-muted-foreground">
+                             {log.activityId ?? "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`font-normal ${
+                                log.actionType === "notify" 
+                                ? "border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-50" 
+                                : "border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-50"
+                            }`}
+                          >
+                            {log.actionType === "notify"
+                              ? t("slaLogs.notify")
+                              : t("slaLogs.autoApprove")}
+                          </Badge>
+                        </TableCell>
+                         <TableCell className="text-center">
+                             {log.violationCount > 0 ? (
+                                 <span className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-bold">
+                                     {log.violationCount}
+                                 </span>
+                             ) : (
+                                 <span className="text-muted-foreground">-</span>
+                             )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                            {log.isSuccess ? (
+                                <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
+                                    {t("slaLogs.successYes")}
+                                </Badge>
+                            ) : (
+                                <Badge variant="destructive" className="items-center gap-1">
+                                    {t("slaLogs.successNo")}
+                                </Badge>
+                            )}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground text-sm tabular-nums pr-4">
+                          {formatDateTime(log.createdAt)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-            </div>
-          )}
-        </CardContent>
+            )}
+            
+            {/* Pagination footer */}
+            {logs.length > 0 && (
+                <div className="flex items-center justify-between px-2 py-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                     Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to <span className="font-medium">{Math.min(page * pageSize, total)}</span> of <span className="font-medium">{total}</span> results
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                      disabled={page === 1}
+                    >
+                      {t("slaLogs.prevPage")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((prev) => (prev < totalPages ? prev + 1 : prev))
+                      }
+                      disabled={page >= totalPages}
+                    >
+                      {t("slaLogs.nextPage")}
+                    </Button>
+                  </div>
+                </div>
+            )}
+          </CardContent>
+        </div>
       </Card>
 
       <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{ "Chi tiết Log"}</DialogTitle>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-hidden flex flex-col p-0 gap-0">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle className="text-xl">Chi tiết Log</DialogTitle>
           </DialogHeader>
+          
           {selectedLog && (
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">ID Bản ghi</h4>
-                  <p className="text-sm font-semibold">{selectedLog.recordId}</p>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">Thời gian tạo</h4>
-                  <p className="text-sm">{formatDateTime(selectedLog.createdAt)}</p>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">Quy trình</h4>
-                  <p className="text-sm">{selectedLog.workflowName ?? selectedLog.workflowId ?? "-"}</p>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">ID Hoạt động</h4>
-                  <p className="text-sm">{selectedLog.activityId ?? "-"}</p>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">Loại hành động</h4>
-                  <Badge variant={selectedLog.actionType === "notify" ? "secondary" : "default"}>
-                    {selectedLog.actionType === "notify" ? t("slaLogs.notify") : t("slaLogs.autoApprove")}
-                  </Badge>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">Số lần vi phạm</h4>
-                  <p className="text-sm">{selectedLog.violationCount}</p>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-medium text-muted-foreground">Trạng thái</h4>
-                  <Badge variant={selectedLog.isSuccess ? "default" : "destructive"}>
-                    {selectedLog.isSuccess ? t("slaLogs.successYes") : t("slaLogs.successNo")}
-                  </Badge>
-                </div>
-              </div>
+            <div className="flex-1 overflow-y-auto p-6 pt-2">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                 {/* ID and Status */}
+                 <div className="col-span-2 flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
+                    <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">ID Mẫu tin</p>
+                        <p className="text-lg font-bold">#{selectedLog.recordId}</p>
+                    </div>
+                    <div className="text-right">
+                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Trạng thái</p>
+                         <Badge variant={selectedLog.isSuccess ? "default" : "destructive"}>
+                             {selectedLog.isSuccess ? "Thành công" : "Thất bại"}
+                         </Badge>
+                    </div>
+                 </div>
 
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">Thông điệp</h4>
-                <div className="rounded-md bg-muted p-3 text-sm">
-                  {translateMessage(selectedLog.message) || "-"}
-                </div>
-              </div>
+                 {/* Key Details */}
+                 <div className="space-y-1">
+                     <p className="text-xs text-muted-foreground font-medium">Quy trình</p>
+                     <p className="text-sm font-medium">{selectedLog.workflowName ?? "-"}</p>
+                 </div>
+                 
+                 <div className="space-y-1">
+                     <p className="text-xs text-muted-foreground font-medium">Hoạt động</p>
+                     <p className="text-sm font-medium">#{selectedLog.activityId ?? "-"}</p>
+                 </div>
 
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">Người dùng vi phạm (Assignees)</h4>
-                {selectedLog.assignees && selectedLog.assignees.length > 0 ? (
-                  <div className="rounded-md border p-3">
-                    <ul className="space-y-2">
-                      {selectedLog.assignees.map((user) => (
-                        <li key={user.id} className="flex items-center gap-2 text-sm">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                            {user.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{user.name}</span>
-                            <span className="text-xs text-muted-foreground">{user.login}</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Không tìm thấy người dùng được gán.</p>
-                )}
+                 <div className="space-y-1">
+                     <p className="text-xs text-muted-foreground font-medium">Hành động</p>
+                     <p className="text-sm">{selectedLog.actionType === "notify" ? "Gửi thông báo" : "Tự động duyệt"}</p>
+                 </div>
+
+                 <div className="space-y-1">
+                     <p className="text-xs text-muted-foreground font-medium">Thời gian chạy</p>
+                     <p className="text-sm font-mono">{formatDateTime(selectedLog.createdAt)}</p>
+                 </div>
+
+                 {/* Message Block */}
+                 <div className="col-span-2 space-y-2 mt-2">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Thông điệp hệ thống</p>
+                    <div className="bg-slate-50 border rounded-md p-3 text-sm text-slate-600 font-mono break-words">
+                        {translateMessage(selectedLog.message) || "Không có thông điệp"}
+                    </div>
+                 </div>
+                 
+                 {/* Assignees List */}
+                 <div className="col-span-2 space-y-2 mt-2">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Người xử lý ({selectedLog.assignees?.length || 0})</p>
+                    {selectedLog.assignees && selectedLog.assignees.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {selectedLog.assignees.slice(0, 6).map((user) => (
+                            <div key={user.id} className="flex items-center gap-3 p-2 border rounded-md bg-background">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                {user.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{user.name}</p>
+                                <p className="text-xs text-muted-foreground truncate">{user.login}</p>
+                              </div>
+                            </div>
+                          ))}
+                          {selectedLog.assignees.length > 6 && (
+                              <div className="flex items-center justify-center text-xs text-muted-foreground p-2">
+                                  + {selectedLog.assignees.length - 6} người khác...
+                              </div>
+                          )}
+                        </div>
+                    ) : (
+                         <p className="text-sm text-muted-foreground italic">Không tìm thấy thông tin.</p>
+                    )}
+                 </div>
               </div>
             </div>
           )}
+          
+          <div className="p-4 border-t bg-muted/10 flex justify-end">
+             <Button variant="outline" onClick={() => setSelectedLog(null)}>Đóng</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </main>
