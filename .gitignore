@@ -72,3 +72,5 @@ docker-data/
 
 # --- Misc ---
 *.local
+.cursor/
+.agent/

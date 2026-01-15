@@ -796,9 +796,11 @@ export class SlaTrackingService {
 
     const qb = this.slaActionLogRepository
       .createQueryBuilder("log")
+      .leftJoinAndSelect("log.record", "record")
       .leftJoin(WorkflowEntity, "workflow", "workflow.id = log.workflowId")
       .leftJoin(ActivityEntity, "activity", "activity.id = log.activityId")
-      .leftJoinAndSelect("log.record", "record")
+      .addSelect("workflow.workflowName", "wf_name")
+      .addSelect("activity.name", "act_name")
       .orderBy("log.createdAt", "DESC");
 
     if (query.actionType) {
@@ -826,15 +828,27 @@ export class SlaTrackingService {
       );
     }
     
+    // Get count before adding skip/take to avoid affecting count?
+    // Actually getCount() ignores skip/take usually, but safer to get count separately or use getManyAndCount logic if possible. 
+    // TypeORM's getCount() creates a subquery count.
+    
+    const total = await qb.getCount();
+    
     qb.skip((page - 1) * pageSize).take(pageSize);
 
-    const [items, total] = await qb.getManyAndCount();
+    const { entities, raw } = await qb.getRawAndEntities();
 
-    // Map items to include assignees from record
-    const mappedItems = items.map(item => ({
-        ...item,
-        assignees: item.record?.userApprove || []
-    }));
+    // Map items to include assignees from record and names from raw result
+    const mappedItems = entities.map((item, index) => {
+        const rawItem = raw[index];
+        return {
+            ...item,
+            assignees: item.record?.userApprove || [],
+            // Use alias from raw result, fallback to record snapshot
+            workflowName: rawItem.wf_name || item.record?.workflowName,
+            activityName: rawItem.act_name || item.record?.stepName
+        };
+    });
 
     return {
       items: mappedItems,

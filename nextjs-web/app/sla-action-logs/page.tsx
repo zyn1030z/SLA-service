@@ -43,6 +43,7 @@ interface SlaActionLog {
   workflowId: number | null;
   workflowName?: string | null;
   activityId: number | null;
+  activityName?: string | null;
   actionType: ActionType;
   violationCount: number;
   isSuccess: boolean;
@@ -269,14 +270,14 @@ const SlaActionLogsPage = () => {
                 <Table>
                   <TableHeader className="bg-muted/40">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[100px] uppercase text-xs font-bold tracking-wider text-muted-foreground pl-4">ID</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Người dùng</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Quy trình</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Activity</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">Loại</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-center">Vi phạm</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-center">Trạng thái</TableHead>
-                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-right pr-4">Thời gian</TableHead>
+                      <TableHead className="w-[100px] uppercase text-xs font-bold tracking-wider text-muted-foreground pl-4">{t("slaLogs.id")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">{t("slaLogs.user")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">{t("slaLogs.workflow")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">{t("slaLogs.activity")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground">{t("slaLogs.type")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-center">{t("slaLogs.violation")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-center">{t("slaLogs.status")}</TableHead>
+                      <TableHead className="uppercase text-xs font-bold tracking-wider text-muted-foreground text-right pr-4">{t("slaLogs.time")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -309,7 +310,7 @@ const SlaActionLogsPage = () => {
                           {log.workflowName ?? log.workflowId ?? "-"}
                         </TableCell>
                          <TableCell className="text-sm text-muted-foreground">
-                             {log.activityId ?? "-"}
+                             {log.activityName ?? log.activityId ?? "-"}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -418,7 +419,7 @@ const SlaActionLogsPage = () => {
                  
                  <div className="space-y-1">
                      <p className="text-xs text-muted-foreground font-medium">Hoạt động</p>
-                     <p className="text-sm font-medium">#{selectedLog.activityId ?? "-"}</p>
+                     <p className="text-sm font-medium">{selectedLog.activityName ?? selectedLog.activityId ?? "-"}</p>
                  </div>
 
                  <div className="space-y-1">

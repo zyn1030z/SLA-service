@@ -6,8 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/use-translation";
-import { FileText, Download, CheckCircle, AlertTriangle, TrendingUp } from "lucide-react";
+import { FileText, Download, CheckCircle, AlertTriangle, TrendingUp, Eye, X } from "lucide-react";
 
 interface SLAReport {
   userId: number;
@@ -21,10 +22,27 @@ interface SLAReport {
   avgCompletionTime: number;
 }
 
+interface UserRecord {
+  id: number;
+  recordId: string;
+  model: string;
+  workflowName?: string;
+  stepName?: string;
+  status: "waiting" | "violated" | "completed";
+  createdAt: string;
+  updatedAt: string;
+  violationCount: number;
+  remainingHours: number;
+}
+
 export default function SLAReportsPage() {
   const { t } = useTranslation();
   const [reportData, setReportData] = useState<SLAReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<SLAReport | null>(null);
+  const [userRecords, setUserRecords] = useState<UserRecord[]>([]);
+  const [userRecordsLoading, setUserRecordsLoading] = useState(false);
+  const [showUserDetail, setShowUserDetail] = useState(false);
 
   const fetchReportData = useCallback(async () => {
     setLoading(true);
@@ -61,6 +79,24 @@ export default function SLAReportsPage() {
       }
     } catch (error) {
       console.error("Error exporting report:", error);
+    }
+  };
+
+  const fetchUserRecords = async (user: SLAReport) => {
+    setUserRecordsLoading(true);
+    try {
+      // Fetch records for this user (last 30 days to match report data)
+      const response = await fetch(`/api/records?userId=${user.userId}&days=30`);
+      if (response.ok) {
+        const data = await response.json();
+        setUserRecords(data.items || []);
+        setSelectedUser(user);
+        setShowUserDetail(true);
+      }
+    } catch (error) {
+      console.error("Error fetching user records:", error);
+    } finally {
+      setUserRecordsLoading(false);
     }
   };
 

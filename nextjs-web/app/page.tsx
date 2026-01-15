@@ -167,7 +167,7 @@ export default function DashboardPage() {
         const combined = [...waitingItems, ...violatedItems];
         setMetricRecords(combined);
         } else {
-          let url = "/api/records?pageSize=10";
+          let url = "/api/records?pageSize=100";
 
           switch (metricType) {
             case "violations":
@@ -175,11 +175,11 @@ export default function DashboardPage() {
               break;
             case "completed":
               // For completed today, get more recent completed records to filter by today
-              url += "&status=completed&pageSize=20";
+              url += "&status=completed&pageSize=100";
               break;
             case "success":
               // For success rate, show all records
-              url = "/api/records?pageSize=50"; // Hiển thị nhiều records hơn cho view tổng quan
+              url = "/api/records?pageSize=100"; // Hiển thị nhiều records hơn cho view tổng quan
               break;
           }
 
