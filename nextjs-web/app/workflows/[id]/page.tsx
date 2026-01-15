@@ -1305,67 +1305,17 @@ export default function WorkflowDetailPage() {
 
           <TabsContent value="configuration">
             <Card>
-              <CardHeader>
+              {/* <CardHeader>
                 <CardTitle>{t("workflow.slaConfiguration")}</CardTitle>
                 <CardDescription>
                   {t("workflow.slaConfigurationDescription")}
                 </CardDescription>
-              </CardHeader>
+              </CardHeader> */}
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">
-                      {t("workflow.notificationSettings")}
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">
-                          {t("workflow.emailNotifications")}
-                        </span>
-                        <input
-                          type="checkbox"
-                          defaultChecked
-                          className="rounded"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">
-                          {t("workflow.smsNotifications")}
-                        </span>
-                        <input type="checkbox" className="rounded" />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">
-                          {t("workflow.slackNotifications")}
-                        </span>
-                        <input type="checkbox" className="rounded" />
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">
-                      {t("workflow.autoApprovalSettings")}
-                    </h3>
-                    <div className="space-y-3">
-                      <div>
-                        <span className="text-sm font-medium">
-                          {t("workflow.globalMaxViolations")}
-                        </span>
-                        <Input type="number" placeholder="3" className="mt-1" />
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium">
-                          {t("workflow.escalationHours")}
-                        </span>
-                        <Input
-                          type="number"
-                          placeholder="24"
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
+
+
                 </div>
 
                 <div className="border-t pt-6">
