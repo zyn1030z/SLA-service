@@ -33,6 +33,64 @@ docker compose up --build
 - API: http://localhost:${API_PORT:-3000}
 - Web: http://localhost:${WEB_PORT:-3001}
 
+## Chạy bằng Dev Container (Khuyến nghị cho VS Code)
+
+Dev Container cung cấp môi trường phát triển nhất quán với tất cả dependencies được cài đặt sẵn.
+
+### Yêu cầu
+- VS Code với extension "Dev Containers"
+- Docker Desktop
+
+### Cách sử dụng
+
+1. **Mở trong Dev Container:**
+   - Mở VS Code
+   - Command Palette (Ctrl+Shift+P) → "Dev Containers: Reopen in Container"
+   - Chọn "SLA Service Development Environment"
+
+2. **Khởi tạo dự án:**
+   ```bash
+   npm run devcontainer:setup
+   ```
+
+3. **Chạy ứng dụng:**
+   ```bash
+   npm run dev
+   ```
+
+### Ưu điểm của Dev Container
+- ✅ Môi trường nhất quán trên mọi máy
+- ✅ Tất cả tools đã được cài đặt (Node.js, Docker CLI, PostgreSQL client, etc.)
+- ✅ Có thể chạy docker compose bên trong container
+- ✅ Hot reload cho cả NestJS và NextJS
+- ✅ Debugging support với breakpoints
+- ✅ Extensions VS Code được cấu hình sẵn
+
+### Scripts hữu ích trong Dev Container
+
+```bash
+# Khởi tạo dự án
+npm run devcontainer:setup
+
+# Chạy tất cả services
+npm run dev
+
+# Xem logs
+npm run dev:logs
+
+# Dừng services
+npm run dev:stop
+
+# Chạy debug mode
+npm run debug
+
+# Cài đặt dependencies
+npm run install:all
+
+# Chạy migrations
+npm run migration:run
+```
+
 ## Auth
 
 - Mặc định bật Global Guard:

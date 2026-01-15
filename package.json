@@ -1,4 +1,22 @@
 {
+  "name": "sla-service",
+  "version": "1.0.0",
+  "description": "SLA Service - Full-stack application with NestJS API and NextJS frontend",
+  "scripts": {
+    "dev": "docker compose up -d",
+    "dev:stop": "docker compose down",
+    "dev:logs": "docker compose logs -f",
+    "dev:build": "docker compose build",
+    "debug": "./start-debug.sh",
+    "devcontainer:setup": "npm run install:all && npm run migration:run",
+    "install:all": "npm run install:api && npm run install:web",
+    "install:api": "cd nestjs-api && npm install",
+    "install:web": "cd nextjs-web && npm install",
+    "migration:run": "cd nestjs-api && npm run migration:run",
+    "migration:revert": "cd nestjs-api && npm run migration:revert",
+    "test": "cd nestjs-api && npm test && cd ../nextjs-web && npm test",
+    "clean": "docker compose down -v && rm -rf nestjs-api/node_modules nextjs-web/node_modules"
+  },
   "dependencies": {
     "puppeteer": "^24.26.1"
   },

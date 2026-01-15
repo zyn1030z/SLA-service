@@ -1,0 +1,9 @@
+# Dev Container specific files
+# These files are generated during dev container setup
+node_modules/
+.next/
+dist/
+*.log
+
+# VS Code settings (if any)
+.vscode/settings.json
