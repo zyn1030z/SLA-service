@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": "application/json",
       },
       signal: controller.signal,
+      cache: "no-store",
     });
 
     clearTimeout(timeoutId);
@@ -28,12 +29,26 @@ export async function GET(request: NextRequest) {
         activeRecords: 0,
         completedToday: 0,
         successRate: 0,
+        trendPercent: 0,
+        trendDirection: "stable",
+      }, {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
       });
     }
 
     const data = await response.json();
     console.log("Dashboard data received:", data);
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error) {
     console.error("Error fetching dashboard summary from backend:", error);
     // Return fallback data on error
@@ -42,6 +57,14 @@ export async function GET(request: NextRequest) {
       activeRecords: 0,
       completedToday: 0,
       successRate: 0,
+      trendPercent: 0,
+      trendDirection: "stable",
+    }, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
     });
   }
 }

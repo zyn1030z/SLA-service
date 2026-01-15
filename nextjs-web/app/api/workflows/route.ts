@@ -13,6 +13,7 @@ export async function GET() {
       headers: {
         "Content-Type": "application/json",
       },
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -20,7 +21,19 @@ export async function GET() {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    console.error(`[GET /api/workflows] Received ${Array.isArray(data) ? data.length : 'non-array'} items from backend`);
+    if (Array.isArray(data) && data.length > 0) {
+      console.error(`[GET /api/workflows] First item has activities: ${data[0].activities ? data[0].activities.length : 'none'}`);
+      console.error(`[GET /api/workflows] First workflow name: ${data[0].workflowName}`);
+    }
+    console.error(`[GET /api/workflows] Returning ${Array.isArray(data) ? data.length : 'non-array'} items to frontend`);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error: any) {
     console.error(`[GET /api/workflows] API request failed:`, {
       error: error?.message || String(error),
@@ -37,7 +50,14 @@ export async function GET() {
             ? { targetUrl, errorCode: error?.code }
             : undefined,
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
     );
   }
 }
@@ -52,6 +72,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -59,7 +80,13 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error) {
     console.error("API request failed:", error);
     return NextResponse.json(
@@ -67,7 +94,14 @@ export async function POST(request: NextRequest) {
         error: error instanceof Error ? error.message : "Unknown error",
         success: false,
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
     );
   }
 }

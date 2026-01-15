@@ -96,11 +96,65 @@ export class SlaController {
     const successRate =
       totalRecords > 0 ? Math.round((completedCount / totalRecords) * 100) : 0;
 
+    // Tính trend 7 ngày gần nhất cho biểu đồ
+    const trend: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() - i);
+      targetDate.setHours(0, 0, 0, 0);
+
+      const dayStart = new Date(targetDate);
+      const dayEnd = new Date(targetDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      // Đếm records được tạo trong ngày đó
+      const dayRecords = await this.recordRepository
+        .createQueryBuilder("r")
+        .where("r.created_at BETWEEN :start AND :end", {
+          start: dayStart.toISOString(),
+          end: dayEnd.toISOString(),
+        })
+        .getCount();
+
+      // Đếm completed records trong ngày đó
+      const dayCompleted = await this.recordRepository
+        .createQueryBuilder("r")
+        .where("r.status = :status", { status: "completed" })
+        .andWhere("r.updated_at BETWEEN :start AND :end", {
+          start: dayStart.toISOString(),
+          end: dayEnd.toISOString(),
+        })
+        .getCount();
+
+      // Tính success rate cho ngày đó
+      const daySuccessRate = dayRecords > 0 ? Math.round((dayCompleted / dayRecords) * 100) : 0;
+      trend.push(daySuccessRate);
+    }
+
+    // Tính trend so với ngày hôm trước (cho badge)
+    const todaySuccessRate = trend[6] || 0; // Hôm nay
+    const yesterdaySuccessRate = trend[5] || 0; // Hôm qua
+
+    let trendPercent = 0;
+    let trendDirection: "up" | "down" | "stable" = "stable";
+
+    if (yesterdaySuccessRate > 0) {
+      trendPercent = Math.round(((todaySuccessRate - yesterdaySuccessRate) / yesterdaySuccessRate) * 100);
+      if (trendPercent > 0) trendDirection = "up";
+      else if (trendPercent < 0) trendDirection = "down";
+    } else if (todaySuccessRate > 0) {
+      trendDirection = "up";
+      trendPercent = 100;
+    }
+
     return {
       totalViolations,
       activeRecords,
       completedToday,
       successRate,
+      trendPercent,
+      trendDirection,
+      trend, // Mảng 7 ngày cho biểu đồ
     };
   }
 

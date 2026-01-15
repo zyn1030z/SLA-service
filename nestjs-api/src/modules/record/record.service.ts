@@ -43,6 +43,11 @@ export interface CreateRecordDto {
   }>;
 }
 
+export interface CreateRecordResult {
+  record: RecordEntity;
+  isExisting: boolean;
+}
+
 export interface UpdateRecordDto extends Partial<CreateRecordDto> {
   user_approve?: Array<{
     id: number;
@@ -69,7 +74,7 @@ export class RecordService {
     return typeof value === "number" && Number.isInteger(value) && value > 0;
   }
 
-  async create(payload: CreateRecordDto): Promise<RecordEntity> {
+  async create(payload: CreateRecordDto): Promise<CreateRecordResult> {
     // Hỗ trợ cả camelCase và snake_case cho user_approve
     const anyPayload = payload as any;
     const incomingUserApprove =
@@ -171,6 +176,62 @@ export class RecordService {
         // Activity not found, but we still allow creating record with stepCode
         // This is optional, so we don't throw error
       }
+    }
+
+    // Check for existing record to prevent duplicates
+    // A record is considered duplicate if it has the same:
+    // - recordId, model, systemId, workflowId, activityId, userApprove
+    const existingRecords = await this.recordRepository
+      .createQueryBuilder("record")
+      .where("record.record_id = :recordId", { recordId: payload.recordId })
+      .andWhere("record.model = :model", { model: payload.model })
+      .andWhere("record.system_id = :systemId", { systemId })
+      .andWhere("record.workflow_id = :workflowId", { workflowId })
+      .andWhere("record.activity_id IS NOT DISTINCT FROM :activityId", { activityId })
+      .getMany();
+
+    // Since we already filtered by systemId, workflowId, and activityId,
+    // now we just need to check if userApprove is the same
+    const isDuplicate = existingRecords.some(record => {
+      // Compare userApprove arrays (considering null/undefined as equivalent)
+      const existingUserApprove = record.userApprove;
+      const incomingUserApproveNormalized = incomingUserApprove;
+
+      // Both null/undefined → duplicate
+      if (!existingUserApprove && !incomingUserApproveNormalized) {
+        return true;
+      }
+
+      // One is null/undefined, other is not → not duplicate
+      if (!existingUserApprove || !incomingUserApproveNormalized) {
+        return false;
+      }
+
+      // Both are arrays, compare content
+      if (Array.isArray(existingUserApprove) && Array.isArray(incomingUserApproveNormalized)) {
+        if (existingUserApprove.length !== incomingUserApproveNormalized.length) {
+          return false;
+        }
+
+        // Sort both arrays by user id and compare
+        const sortedExisting = [...existingUserApprove].sort((a, b) => a.id - b.id);
+        const sortedIncoming = [...incomingUserApproveNormalized].sort((a, b) => a.id - b.id);
+
+        return sortedExisting.every((user, index) =>
+          user.id === sortedIncoming[index]?.id &&
+          user.login === sortedIncoming[index]?.login
+        );
+      }
+
+      return false;
+    });
+
+    if (isDuplicate) {
+      // Return existing record instead of throwing error
+      return {
+        record: existingRecords[0],
+        isExisting: true
+      };
     }
 
     // Determine SLA hours: use from activity, then payload, then default
@@ -304,7 +365,10 @@ export class RecordService {
       }
     }
 
-    return savedRecord;
+    return {
+      record: savedRecord,
+      isExisting: false
+    };
   }
 
   async update(id: number, payload: UpdateRecordDto): Promise<RecordEntity> {

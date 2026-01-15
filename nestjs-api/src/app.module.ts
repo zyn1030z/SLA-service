@@ -10,6 +10,7 @@ import { NotificationModule } from "./modules/notification/notification.module";
 import { OdooIntegrationModule } from "./modules/odoo/odoo-integration.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { RecordModule } from "./modules/record/record.module";
+import { ReportsModule } from "./modules/reports/reports.module";
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { RecordModule } from "./modules/record/record.module";
     OdooIntegrationModule,
     AuthModule,
     RecordModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

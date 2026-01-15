@@ -27,6 +27,7 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  Settings,
   X,
   ExternalLink,
   FileX
@@ -94,6 +95,10 @@ export default function DashboardPage() {
   const [metricRecords, setMetricRecords] = useState<any[]>([]);
   const [metricLoading, setMetricLoading] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10; // Show 10 records per page
+
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     const defaultSummary = {
@@ -101,6 +106,8 @@ export default function DashboardPage() {
       activeRecords: 0,
       completedToday: 0,
       successRate: 0,
+      trendPercent: 0,
+      trendDirection: "stable" as "up" | "down" | "stable",
     };
 
     try {
@@ -144,7 +151,7 @@ export default function DashboardPage() {
     try {
       // For 'active' metric we want both waiting + violated records
       if (metricType === "active") {
-        const pageSizeParam = "pageSize=20";
+        const pageSizeParam = "pageSize=50";
         const [waitingRes, violatedRes] = await Promise.all([
           fetch(`/api/records?status=waiting&${pageSizeParam}`),
           fetch(`/api/records?status=violated&${pageSizeParam}`),
@@ -156,31 +163,25 @@ export default function DashboardPage() {
         const waitingItems = Array.isArray(waitingJson.items) ? waitingJson.items : [];
         const violatedItems = Array.isArray(violatedJson.items) ? violatedJson.items : [];
 
-        // Merge and deduplicate by recordId or id
+        // Merge all records without deduplication - each record represents a different activity/step
         const combined = [...waitingItems, ...violatedItems];
-        const uniqueById: Record<string, any> = {};
-        combined.forEach((r: any) => {
-          const key = String(r.recordId ?? r.id ?? JSON.stringify(r));
-          if (!uniqueById[key]) uniqueById[key] = r;
-        });
+        setMetricRecords(combined);
+        } else {
+          let url = "/api/records?pageSize=10";
 
-        setMetricRecords(Object.values(uniqueById));
-      } else {
-        let url = "/api/records?pageSize=10";
-
-        switch (metricType) {
-          case "violations":
-            url += "&status=violated";
-            break;
-          case "completed":
-            // For completed today, get more recent completed records to filter by today
-            url += "&status=completed&pageSize=20";
-            break;
-          case "success":
-            // For success rate, show all records
-            url += "";
-            break;
-        }
+          switch (metricType) {
+            case "violations":
+              url += "&status=violated";
+              break;
+            case "completed":
+              // For completed today, get more recent completed records to filter by today
+              url += "&status=completed&pageSize=20";
+              break;
+            case "success":
+              // For success rate, show all records
+              url = "/api/records?pageSize=50"; // Hiển thị nhiều records hơn cho view tổng quan
+              break;
+          }
 
         const response = await fetch(url);
         if (response.ok) {
@@ -216,9 +217,11 @@ export default function DashboardPage() {
       // If clicking the same metric, close it
       setSelectedMetric(null);
       setMetricRecords([]);
+      setCurrentPage(1); // Reset pagination
     } else {
       // Open new metric
       setSelectedMetric(metricType);
+      setCurrentPage(1); // Reset to first page
       fetchMetricRecords(metricType);
     }
   };
@@ -239,6 +242,19 @@ export default function DashboardPage() {
         return "Thành công";
       default:
         return status;
+    }
+  };
+
+  // Pagination logic
+  const totalPages = Math.ceil(metricRecords.length / pageSize);
+  const paginatedRecords = metricRecords.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
     }
   };
 
@@ -521,9 +537,24 @@ export default function DashboardPage() {
               {summary?.successRate ?? "95"}%
             </div>
             <div className="flex items-center space-x-2 mt-2">
-              <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">
-                <ArrowDownRight className="h-3 w-3 mr-1" />
-                -2%
+              <Badge
+                className={`text-xs ${
+                  summary?.trendDirection === "up"
+                    ? "bg-green-100 text-green-800 hover:bg-green-100"
+                    : summary?.trendDirection === "down"
+                    ? "bg-red-100 text-red-800 hover:bg-red-100"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-100"
+                }`}
+              >
+                {summary?.trendDirection === "up" ? (
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                ) : summary?.trendDirection === "down" ? (
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                ) : (
+                  <ArrowUpRight className="h-3 w-3 mr-1" />
+                )}
+                {summary?.trendPercent > 0 ? "+" : ""}
+                {summary?.trendPercent ?? 0}%
               </Badge>
               <p className="text-xs text-purple-600 dark:text-purple-400">
                 {t("dashboard.slaComplianceRate")}
@@ -630,7 +661,7 @@ export default function DashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {metricRecords.map((r: any) => (
+                    {paginatedRecords.map((r: any) => (
                       <TableRow key={r.id} className="cursor-pointer" onClick={() => (window.location.href = `/records`)}>
                         <TableCell>{r.recordId ?? r.id}</TableCell>
                         <TableCell className="font-medium">{r.workflowName ?? r.name ?? "-"}</TableCell>
@@ -665,6 +696,62 @@ export default function DashboardPage() {
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Hiển thị {paginatedRecords.length} / {metricRecords.length} bản ghi
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        Trước
+                      </Button>
+
+                      {/* Page numbers */}
+                      <div className="flex gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = currentPage - 2 + i;
+                          }
+
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={currentPage === pageNum ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => goToPage(pageNum)}
+                              className="w-8 h-8 p-0"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                      >
+                        Sau
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <EmptyState
@@ -719,7 +806,7 @@ export default function DashboardPage() {
             <Link href="/records">
               <Button className="w-full justify-start group" variant="outline">
                 <FileText className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
-                {t("dashboard.viewAllWorkflows")}
+                {t("dashboard.viewAllRecords")}
               </Button>
             </Link>
             <Link href="/workflows">
@@ -728,14 +815,18 @@ export default function DashboardPage() {
                 {t("dashboard.viewAllWorkflows")}
               </Button>
             </Link>
-            <Button className="w-full justify-start group" variant="outline">
-              <BarChart3 className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
-              {t("dashboard.exportReports")}
-            </Button>
-            <Button className="w-full justify-start group" variant="outline">
-              <Users className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
-              {t("dashboard.configureSlaRules")}
-            </Button>
+            <Link href="/reports">
+              <Button className="w-full justify-start group" variant="outline">
+                <BarChart3 className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
+                {t("dashboard.exportReports")}
+              </Button>
+            </Link>
+            <Link href="/sla-config">
+              <Button className="w-full justify-start group" variant="outline">
+                <Settings className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
+                {t("dashboard.configureSlaRules")}
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

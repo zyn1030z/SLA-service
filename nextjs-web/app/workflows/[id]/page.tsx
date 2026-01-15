@@ -47,6 +47,7 @@ import {
   Bell,
   Zap,
   X,
+  RefreshCw,
 } from "lucide-react";
 
 declare global {
@@ -849,6 +850,15 @@ export default function WorkflowDetailPage() {
                   : t("workflow.inactive")}
               </span>
             </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadWorkflow()}
+              className="ml-2"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Data
+            </Button>
             {/* <Button>
             <Settings className="h-4 w-4 mr-2" />
             {t("workflow.settings")}

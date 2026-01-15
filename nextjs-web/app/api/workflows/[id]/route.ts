@@ -15,6 +15,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       headers: {
         "Content-Type": "application/json",
       },
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -23,12 +24,25 @@ export async function GET(_request: NextRequest, { params }: Params) {
           success: false,
           error: `Upstream responded ${response.status}`,
         },
-        { status: response.status }
+        {
+          status: response.status,
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+          },
+        }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json({ data, success: true });
+    return NextResponse.json({ data, success: true }, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error: any) {
     console.error(`[GET /api/workflows/${params.id}] failed`, {
       error: error?.message || error,
@@ -65,6 +79,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         "Content-Type": "application/json",
       },
       body,
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -81,14 +96,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
           details:
             process.env.NODE_ENV === "development" ? { body: text } : undefined,
         },
-        { status: response.status }
+        {
+          status: response.status,
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+          },
+        }
       );
     }
 
     const data = await response.json().catch(() => ({}));
     return NextResponse.json(
       { success: true, data },
-      { status: response.status }
+      {
+        status: response.status,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
     );
   } catch (error: any) {
     console.error(`[PUT /api/workflows/${params.id}] failed`, {

@@ -146,8 +146,16 @@ export class RecordController {
         "Either odooWorkflowId or both workflowId and systemId are required"
       );
     }
-    const record = await this.recordService.create(body);
-    return { success: true, record };
+    const result = await this.recordService.create(body);
+
+    return {
+      success: true,
+      record: result.record,
+      isExisting: result.isExisting,
+      message: result.isExisting
+        ? "Record already exists, returning existing record"
+        : "Record created successfully"
+    };
   }
 
   @Public()

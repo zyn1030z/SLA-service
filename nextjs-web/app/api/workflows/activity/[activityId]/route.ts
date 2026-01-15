@@ -16,6 +16,7 @@ export async function PUT(
       method: "PUT",
       headers: request.headers,
       body,
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -25,12 +26,25 @@ export async function PUT(
           success: false,
           error: errorData?.message || response.statusText,
         },
-        { status: response.status }
+        {
+          status: response.status,
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+          },
+        }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error: any) {
     console.error(`[PUT /api/workflows/activity/${params.activityId}] failed`, {
       error: error?.message || error,
@@ -41,7 +55,14 @@ export async function PUT(
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
     );
   }
 }
@@ -61,6 +82,7 @@ export async function PATCH(
       method: "PATCH",
       headers: request.headers,
       body,
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -70,12 +92,25 @@ export async function PATCH(
           success: false,
           error: errorData?.message || response.statusText,
         },
-        { status: response.status }
+        {
+          status: response.status,
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+          },
+        }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error: any) {
     console.error(
       `[PATCH /api/workflows/activity/${params.activityId}] failed`,
@@ -89,7 +124,14 @@ export async function PATCH(
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
     );
   }
 }
@@ -106,6 +148,7 @@ export async function DELETE(
   try {
     const response = await fetch(targetUrl, {
       method: "DELETE",
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -115,12 +158,25 @@ export async function DELETE(
           success: false,
           error: errorData?.message || response.statusText,
         },
-        { status: response.status }
+        {
+          status: response.status,
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+          },
+        }
       );
     }
 
     const data = await response.json().catch(() => ({ success: true }));
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (error: any) {
     console.error(
       `[DELETE /api/workflows/activity/${params.activityId}] failed`,
@@ -134,7 +190,14 @@ export async function DELETE(
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
     );
   }
 }

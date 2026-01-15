@@ -139,11 +139,13 @@ export class WorkflowService {
 
   async findAll(): Promise<WorkflowEntity[]> {
     const results = await this.workflowRepository.find({
+      relations: ["activities"],
       order: { createdAt: "DESC" },
     });
     console.log("[WorkflowService.findAll] Returned workflows:", {
       count: results.length,
       ids: results.map((w) => w.id),
+      activitiesCount: results.reduce((sum, w) => sum + (w.activities?.length || 0), 0),
     });
     return results;
   }
