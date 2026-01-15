@@ -17,8 +17,9 @@ export interface ListActionLogsQuery {
 @Injectable()
 export class SlaTrackingService {
   private readonly logger = new Logger(SlaTrackingService.name);
-  private readonly BUSINESS_START_HOUR = 8; // 8h
-  private readonly BUSINESS_END_HOUR = 17; // 17h
+  private readonly BUSINESS_TIMEZONE_OFFSET = 7; // UTC+7
+  private readonly BUSINESS_START_HOUR = 8; // 8h business time (15h UTC)
+  private readonly BUSINESS_END_HOUR = 17; // 17h business time (24h UTC / 00h next day UTC)
   private readonly BUSINESS_HOURS_PER_DAY = 9; // 17 - 8 = 9 giờ
 
   constructor(
@@ -34,11 +35,24 @@ export class SlaTrackingService {
   ) {}
 
   /**
-   * Lấy thời gian hiện tại với timezone UTC+7
+   * Lấy thời gian hiện tại (UTC)
    */
-  private getNowWithOffset(): Date {
-    const now = new Date();
-    return new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  private getNow(): Date {
+    return new Date(); // UTC time
+  }
+
+  /**
+   * Convert UTC time to business timezone (UTC+7)
+   */
+  private toBusinessTimezone(utcDate: Date): Date {
+    return new Date(utcDate.getTime() + this.BUSINESS_TIMEZONE_OFFSET * 60 * 60 * 1000);
+  }
+
+  /**
+   * Convert business timezone time to UTC
+   */
+  private fromBusinessTimezone(businessDate: Date): Date {
+    return new Date(businessDate.getTime() - this.BUSINESS_TIMEZONE_OFFSET * 60 * 60 * 1000);
   }
 
   /**
@@ -71,8 +85,9 @@ export class SlaTrackingService {
     if (!this.isValidBusinessDay(date)) {
       return false;
     }
-    const hour = date.getUTCHours();
-    const businessEndHour = this.getBusinessEndHourForDay(date);
+    const businessDate = this.toBusinessTimezone(date);
+    const hour = businessDate.getUTCHours();
+    const businessEndHour = this.getBusinessEndHourForDay(businessDate);
     return hour >= this.BUSINESS_START_HOUR && hour < businessEndHour;
   }
 
@@ -114,21 +129,23 @@ export class SlaTrackingService {
   }
 
   /**
-   * Kiểm tra xem ngày có phải là ngày làm việc hợp lệ không
+   * Kiểm tra xem ngày có phải là ngày làm việc hợp lệ không (theo business timezone UTC+7)
    * - Thứ 2 đến thứ 6: hợp lệ
-   * - Thứ 7: chỉ hợp lệ nếu < 12h
+   * - Thứ 7: chỉ hợp lệ nếu < 12h (business time)
    * - Chủ nhật: không hợp lệ
    */
   private isValidBusinessDay(date: Date): boolean {
-    const day = date.getUTCDay(); // 0: Chủ nhật, 6: Thứ bảy
-    const hour = date.getUTCHours();
+    // Convert UTC date to business timezone for checking
+    const businessDate = this.toBusinessTimezone(date);
+    const day = businessDate.getUTCDay(); // 0: Chủ nhật, 6: Thứ bảy
+    const hour = businessDate.getUTCHours();
 
     // Thứ 2-6: hợp lệ
     if (day >= 1 && day <= 5) {
       return true;
     }
 
-    // Thứ 7: chỉ hợp lệ nếu < 12h
+    // Thứ 7: chỉ hợp lệ nếu < 12h (business time)
     if (day === 6) {
       return hour < 12;
     }
@@ -358,7 +375,7 @@ export class SlaTrackingService {
       return record.violationCount || 0;
     }
 
-    const nowWithOffset = this.getNowWithOffset();
+    const now = this.getNow();
     const startTime = new Date(record.startTime);
     const slaHours = activity.slaHours || record.slaHours || 24;
     const maxViolations = activity.maxViolations || 3;
@@ -366,7 +383,7 @@ export class SlaTrackingService {
     // Tính số giờ hành chính đã trôi qua từ startTime đến now
     const elapsedBusinessHours = this.calculateBusinessHoursBetween(
       startTime,
-      nowWithOffset
+      now
     );
 
     // Tính số lần vi phạm: mỗi slaHours là 1 lần vi phạm
@@ -490,7 +507,7 @@ export class SlaTrackingService {
       return 0;
     }
 
-    const nowWithOffset = this.getNowWithOffset();
+    const now = this.getNow();
     const slaHours = activity.slaHours || record.slaHours || 24;
 
     // Tính nextDueAt dựa trên giờ hành chính
@@ -502,7 +519,7 @@ export class SlaTrackingService {
 
     // Tính số giờ hành chính còn lại từ now đến nextDueAt
     const remaining = this.calculateBusinessHoursBetween(
-      nowWithOffset,
+      now,
       nextDueAt
     );
 

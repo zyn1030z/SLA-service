@@ -25,6 +25,9 @@ const dataSource = new DataSource({
   migrations: [__dirname + "/migrations/*.{ts,js}"],
   synchronize: false,
   logging: false,
+  extra: {
+    timezone: 'UTC', // Force UTC timezone for all database operations
+  },
 });
 
 export default dataSource;
