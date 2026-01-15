@@ -220,18 +220,19 @@ export default function SLAReportsPage() {
                 <TableHead>Đang xử lý</TableHead>
                 <TableHead>Tỷ lệ thành công</TableHead>
                 <TableHead>Thời gian TB (giờ)</TableHead>
+                <TableHead>Hành động</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     Đang tải dữ liệu...
                   </TableCell>
                 </TableRow>
               ) : reportData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     Không có dữ liệu báo cáo
                   </TableCell>
                 </TableRow>
@@ -267,7 +268,18 @@ export default function SLAReportsPage() {
                         <span>{user.successRate}%</span>
                       </Badge>
                     </TableCell>
-                    <TableCell>{user.avgCompletionTime.toFixed(1)}h</TableCell>
+                    <TableCell>{Number(user.avgCompletionTime).toFixed(1)}h</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchUserRecords(user)}
+                        className="gap-2"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Xem chi tiết
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -275,6 +287,158 @@ export default function SLAReportsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* User Detail Dialog */}
+      <Dialog open={showUserDetail} onOpenChange={setShowUserDetail}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Chi tiết records của {selectedUser?.userName} ({selectedUser?.userLogin})
+            </DialogTitle>
+            <DialogDescription>
+              Tổng quan các records trong 30 ngày gần nhất
+            </DialogDescription>
+          </DialogHeader>
+
+          {userRecordsLoading ? (
+            <div className="text-center py-8">Đang tải dữ liệu...</div>
+          ) : (
+            <div className="space-y-6">
+              {/* Violated Records */}
+              <div>
+                <h3 className="text-lg font-semibold text-red-600 mb-3 flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Records vi phạm SLA ({userRecords.filter(r => r.status === 'violated').length})
+                </h3>
+                {userRecords.filter(r => r.status === 'violated').length > 0 ? (
+                  <div className="space-y-2">
+                    {userRecords.filter(r => r.status === 'violated').map((record) => (
+                      <Card key={record.id} className="border-red-200">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium">Record ID: {record.recordId}</div>
+                              <div className="text-sm text-muted-foreground">
+                                Model: {record.model}
+                                {record.workflowName && ` • Workflow: ${record.workflowName}`}
+                                {record.stepName && ` • Step: ${record.stepName}`}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                Tạo: {new Date(record.createdAt).toLocaleString('vi-VN')}
+                                • Cập nhật: {new Date(record.updatedAt).toLocaleString('vi-VN')}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <Badge variant="destructive">
+                                Vi phạm SLA
+                              </Badge>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Còn lại: {Number(record.remainingHours).toFixed(1)}h
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    Không có records vi phạm SLA
+                  </div>
+                )}
+              </div>
+
+              {/* Completed Records */}
+              <div>
+                <h3 className="text-lg font-semibold text-green-600 mb-3 flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5" />
+                  Records đã hoàn thành ({userRecords.filter(r => r.status === 'completed').length})
+                </h3>
+                {userRecords.filter(r => r.status === 'completed').length > 0 ? (
+                  <div className="space-y-2">
+                    {userRecords.filter(r => r.status === 'completed').map((record) => (
+                      <Card key={record.id} className="border-green-200">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium">Record ID: {record.recordId}</div>
+                              <div className="text-sm text-muted-foreground">
+                                Model: {record.model}
+                                {record.workflowName && ` • Workflow: ${record.workflowName}`}
+                                {record.stepName && ` • Step: ${record.stepName}`}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                Tạo: {new Date(record.createdAt).toLocaleString('vi-VN')}
+                                • Cập nhật: {new Date(record.updatedAt).toLocaleString('vi-VN')}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <Badge className="bg-green-100 text-green-800">
+                                Đã hoàn thành
+                              </Badge>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Còn lại: {Number(record.remainingHours).toFixed(1)}h
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    Không có records đã hoàn thành
+                  </div>
+                )}
+              </div>
+
+              {/* Pending Records */}
+              <div>
+                <h3 className="text-lg font-semibold text-yellow-600 mb-3 flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Records đang xử lý ({userRecords.filter(r => r.status === 'waiting').length})
+                </h3>
+                {userRecords.filter(r => r.status === 'waiting').length > 0 ? (
+                  <div className="space-y-2">
+                    {userRecords.filter(r => r.status === 'waiting').map((record) => (
+                      <Card key={record.id} className="border-yellow-200">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium">Record ID: {record.recordId}</div>
+                              <div className="text-sm text-muted-foreground">
+                                Model: {record.model}
+                                {record.workflowName && ` • Workflow: ${record.workflowName}`}
+                                {record.stepName && ` • Step: ${record.stepName}`}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                Tạo: {new Date(record.createdAt).toLocaleString('vi-VN')}
+                                • Cập nhật: {new Date(record.updatedAt).toLocaleString('vi-VN')}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <Badge variant="outline" className="border-yellow-500 text-yellow-700">
+                                Đang xử lý
+                              </Badge>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                Còn lại: {Number(record.remainingHours).toFixed(1)}h
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    Không có records đang xử lý
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

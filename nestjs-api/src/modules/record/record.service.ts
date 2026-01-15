@@ -19,6 +19,9 @@ export interface ListRecordsQuery {
   search?: string;
   model?: string;
   workflowId?: number;
+  assignee?: string;
+  userId?: number;
+  days?: number;
 }
 
 export interface CreateRecordDto {
@@ -581,6 +584,27 @@ export class RecordService {
         "EXISTS (SELECT 1 FROM jsonb_array_elements(r.user_approve) elem WHERE (elem->>'name') ILIKE :s OR (elem->>'login') ILIKE :s)";
 
       qb.andWhere(`(${conditions} OR ${jsonbApproverCondition})`, { s });
+    }
+    if (query.userId) {
+      // Filter by user ID in the userApprove JSONB array
+      // userApprove is [{"id": 1, "name": "...", "login": "..."}]
+      qb.andWhere(
+        "EXISTS (SELECT 1 FROM jsonb_array_elements(r.user_approve) elem WHERE (elem->>'id')::int = :userId)",
+        { userId: query.userId }
+      );
+    }
+    // Backward compatibility for 'assignee' (login)
+    if (query.assignee) {
+      qb.andWhere(
+        "EXISTS (SELECT 1 FROM jsonb_array_elements(r.user_approve) elem WHERE (elem->>'login') = :assignee)",
+        { assignee: query.assignee }
+      );
+    }
+    if (query.days) {
+      // Filter by created_at in the last N days
+      qb.andWhere("r.created_at >= NOW() - make_interval(days := :days)", {
+        days: query.days,
+      });
     }
     if (query.step) {
       qb.andWhere("r.step_name = :step", { step: query.step });

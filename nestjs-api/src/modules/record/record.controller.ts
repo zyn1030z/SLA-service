@@ -67,6 +67,10 @@ export class RecordController {
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiQuery({ name: "model", required: false, type: String })
   @ApiQuery({ name: "workflowId", required: false, type: String })
+  @ApiQuery({ name: "step", required: false, type: String })
+  @ApiQuery({ name: "assignee", required: false, type: String })
+  @ApiQuery({ name: "userId", required: false, type: Number })
+  @ApiQuery({ name: "days", required: false, type: Number })
   @ApiResponse({ status: 200, description: "Paged record list" })
   async list(
     @Query("page") page?: string,
@@ -75,7 +79,10 @@ export class RecordController {
     @Query("search") search?: string,
     @Query("model") model?: string,
     @Query("workflowId") workflowId?: string,
-    @Query("step") step?: string
+    @Query("step") step?: string,
+    @Query("assignee") assignee?: string,
+    @Query("userId") userId?: string,
+    @Query("days") days?: string
   ) {
     return this.recordService.list({
       page: page ? Number(page) : undefined,
@@ -85,6 +92,9 @@ export class RecordController {
       model,
       workflowId: workflowId ? Number(workflowId) : undefined,
       step,
+      assignee,
+      userId: userId ? Number(userId) : undefined,
+      days: days ? Number(days) : undefined,
     });
   }
 
