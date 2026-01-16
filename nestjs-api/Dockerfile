@@ -1,8 +1,8 @@
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --only=production && npm install --only=dev
+RUN npm install --production=false
 COPY . .
 RUN npx nest -v >/dev/null 2>&1 || npm i -g @nestjs/cli
 EXPOSE 3000 9229
-CMD ["npm", "run", "start:dev"]
+CMD ["sh", "-c", "npm install --production=false && npm run start:debug"]
