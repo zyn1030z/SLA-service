@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import apiClient from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { UserForm } from "@/components/admin/user-form";
+import { UserDialog } from "@/components/admin/user-dialog";
 import { UserTable } from "@/components/admin/user-table";
 import { UserPlus } from "lucide-react";
 
@@ -12,7 +12,8 @@ interface User {
   username: string;
   email: string;
   fullName: string;
-  roleCode: string;
+  role: string;
+  roleCode?: string;
   isActive: boolean;
   isLocked: boolean;
   lastLoginAt: string;
@@ -97,11 +98,11 @@ export default function UsersPage() {
         onDelete={handleDelete}
       />
       
-      <UserForm 
-         open={dialogOpen} 
-         onOpenChange={setDialogOpen} 
-         user={selectedUser} 
-         onSuccess={fetchUsers} 
+      <UserDialog
+         open={dialogOpen}
+         onOpenChange={setDialogOpen}
+         user={selectedUser}
+         onSuccess={fetchUsers}
       />
     </div>
   );

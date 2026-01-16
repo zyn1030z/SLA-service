@@ -10,7 +10,18 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    // Try to get token from localStorage first, then cookies
+    let token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+
+    // If not in localStorage, try cookies (for SSR/server-side requests)
+    if (!token && typeof document !== 'undefined') {
+      const cookies = document.cookie.split(';');
+      const accessTokenCookie = cookies.find(cookie => cookie.trim().startsWith('accessToken='));
+      if (accessTokenCookie) {
+        token = accessTokenCookie.split('=')[1];
+      }
+    }
+
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
