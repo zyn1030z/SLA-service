@@ -6,6 +6,10 @@ import { ActivityEntity } from "./entities/activity.entity";
 import { TransitionEntity } from "./entities/transition.entity";
 import { RecordEntity } from "./entities/record.entity";
 import { SlaActionLogEntity } from "./entities/sla-action-log.entity";
+import { UserEntity } from "./modules/users/entities/user.entity";
+import { RoleEntity } from "./modules/users/entities/role.entity";
+import { RefreshTokenEntity } from "./modules/auth/entities/refresh-token.entity";
+import { LoginHistoryEntity } from "./modules/auth/entities/login-history.entity";
 
 const dataSource = new DataSource({
   type: "postgres",
@@ -21,6 +25,10 @@ const dataSource = new DataSource({
     TransitionEntity,
     RecordEntity,
     SlaActionLogEntity,
+    UserEntity,
+    RoleEntity,
+    RefreshTokenEntity,
+    LoginHistoryEntity,
   ],
   migrations: [__dirname + "/migrations/*.{ts,js}"],
   synchronize: false,

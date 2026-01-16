@@ -11,6 +11,7 @@ import { OdooIntegrationModule } from "./modules/odoo/odoo-integration.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { RecordModule } from "./modules/record/record.module";
 import { ReportsModule } from "./modules/reports/reports.module";
+import { UsersModule } from "./modules/users/users.module";
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ReportsModule } from "./modules/reports/reports.module";
     AuthModule,
     RecordModule,
     ReportsModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

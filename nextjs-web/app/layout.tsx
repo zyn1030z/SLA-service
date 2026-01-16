@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@/lib/use-translation";
 import { cn } from "@/lib/utils";
+import { AuthProvider } from "@/lib/auth-context";
 
 const navigation = [
   {
@@ -162,18 +163,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const isLoginPage = pathname === "/login";
 
   return (
     <html lang="vi">
       <body className="min-h-screen bg-background text-foreground">
+        <AuthProvider>
         <div className="flex h-screen">
           {/* Desktop Sidebar */}
+          {!isLoginPage && (
           <div className="hidden lg:flex lg:w-80 lg:flex-col lg:border-r lg:bg-card/50">
             <Sidebar />
           </div>
+          )}
 
           {/* Mobile Sidebar Overlay */}
-          {sidebarOpen && (
+          {sidebarOpen && !isLoginPage && (
             <div className="fixed inset-0 z-50 lg:hidden">
               <div
                 className="absolute inset-0 bg-black/50"
@@ -188,6 +194,7 @@ export default function RootLayout({
           {/* Main Content */}
           <div className="flex flex-col flex-1 overflow-hidden">
             {/* Top Header */}
+            {!isLoginPage && (
             <header className="flex items-center justify-between px-6 py-4 border-b bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/60">
               <div className="flex items-center">
                 <Button
@@ -210,15 +217,17 @@ export default function RootLayout({
                 </div>
               </div>
             </header>
+            )}
 
             {/* Page Content */}
             <main className="flex-1 overflow-auto">
-              <div className="max-w-full px-2 lg:px-4 py-8">
+              <div className={cn("max-w-full", !isLoginPage && "px-2 lg:px-4 py-8")}>
                 {children}
               </div>
             </main>
           </div>
         </div>
+        </AuthProvider>
       </body>
     </html>
   );
