@@ -44,7 +44,6 @@ services:
       - "9229:9229" # Debug port
     volumes:
       - ./nestjs-api:/app
-      - nestjs_api_node_modules:/app/node_modules
     command: sh -c "npm run migration:run && npm run start:debug"
   # nextjs-web:
   #   build: ./nextjs-web
@@ -83,5 +82,4 @@ services:
 
 volumes:
   sla_pg_data:
-  nestjs_api_node_modules:
   nextjs_web_node_modules:
