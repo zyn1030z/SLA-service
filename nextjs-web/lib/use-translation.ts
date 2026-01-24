@@ -10,6 +10,7 @@ const translations = {
     "navigation.records": "Records",
     "navigation.systems": "Systems",
     "navigation.slaLogs": "SLA Logs",
+    "navigation.users": "Users",
     "slaLogs.title": "SLA Action Logs",
     "slaLogs.subtitle":
       "Review notification and auto-approval attempts triggered by SLA violations",
@@ -239,6 +240,7 @@ const translations = {
     "navigation.records": "Bản ghi",
     "navigation.systems": "Hệ thống",
     "navigation.slaLogs": "Nhật ký SLA",
+    "navigation.users": "Danh sách người dùng",
     "navigation.slaLogsDescription": "Lịch sử hành động SLA",
     "slaLogs.title": "Nhật ký SLA",
     "slaLogs.subtitle":

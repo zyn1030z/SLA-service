@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AdminOnly } from "@/components/ProtectedRoute";
 import {
   Table,
   TableBody,
@@ -89,7 +90,7 @@ interface Activity {
   };
 }
 
-export default function SLAConfigPage() {
+function SLAConfigPage() {
   const { t } = useTranslation();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -547,5 +548,13 @@ function ActivityConfigForm({
         </Button>
       </DialogFooter>
     </div>
+  );
+}
+
+export default function SLAConfigPageWrapper() {
+  return (
+    <AdminOnly>
+      <SLAConfigPage />
+    </AdminOnly>
   );
 }

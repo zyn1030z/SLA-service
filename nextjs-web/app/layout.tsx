@@ -14,13 +14,16 @@ import {
   Menu,
   X,
   ChevronRight,
-  Activity
+  Activity,
+  Users
 } from "lucide-react";
 import { useTranslation } from "@/lib/use-translation";
 import { cn } from "@/lib/utils";
-import { AuthProvider } from "@/lib/auth-context";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { UserMenu } from "@/components/layout/user-menu";
 
-const navigation = [
+// Public navigation - available to all users
+const publicNavigation = [
   {
     name: "navigation.dashboard",
     href: "/",
@@ -34,6 +37,16 @@ const navigation = [
     description: "Quản lý và theo dõi bản ghi",
   },
   {
+    name: "navigation.slaLogs",
+    href: "/sla-action-logs",
+    icon: Bell,
+    description: "Lịch sử hành động SLA",
+  },
+];
+
+// Admin navigation - only visible to admin users
+const adminNavigation = [
+  {
     name: "navigation.workflows",
     href: "/workflows",
     icon: Workflow,
@@ -46,16 +59,20 @@ const navigation = [
     description: "Quản lý hệ thống kết nối",
   },
   {
-    name: "navigation.slaLogs",
-    href: "/sla-action-logs",
-    icon: Bell,
-    description: "Lịch sử hành động SLA",
+    name: "navigation.users",
+    href: "/admin/users",
+    icon: Users,
+    description: "Quản lý người dùng hệ thống",
   },
 ];
 
 function Sidebar({ className, onClose }: { className?: string; onClose?: () => void }) {
   const { t } = useTranslation();
   const pathname = usePathname();
+  const { isAdmin } = useAuth();
+
+  // Combine navigation based on user role
+  const navigation = isAdmin ? [...publicNavigation, ...adminNavigation] : publicNavigation;
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
@@ -211,6 +228,7 @@ export default function RootLayout({
               </div>
 
               <div className="flex items-center space-x-4">
+                <UserMenu />
                 {/* Language switcher hidden in UI but kept mounted to preserve i18n state */}
                 <div className="hidden">
                   <LanguageSwitcher />

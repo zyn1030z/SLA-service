@@ -50,9 +50,7 @@ const userFormSchema = z.object({
       // Password is required for new users, optional for existing users
       return val === undefined || val === "" || val.length >= 6;
     }, "Mật khẩu phải có ít nhất 6 ký tự"),
-  roleCode: z.enum(["admin", "user"], {
-    required_error: "Vui lòng chọn quyền",
-  }),
+  roleCode: z.enum(["admin", "user"]),
 });
 
 type UserFormData = z.infer<typeof userFormSchema>;
@@ -102,6 +100,7 @@ export function UserDialog({ open, onOpenChange, user, onSuccess }: UserDialogPr
   }, [user, open, reset]);
 
   const onSubmit = async (data: UserFormData) => {
+    console.log("Submitting user data:", data);
     try {
       if (user) {
         // Edit user
@@ -164,7 +163,7 @@ export function UserDialog({ open, onOpenChange, user, onSuccess }: UserDialogPr
         <DialogHeader>
           <DialogTitle>{user ? "Chỉnh sửa người dùng" : "Tạo người dùng mới"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+        <form onSubmit={handleSubmit(onSubmit, (errors) => console.log("Form errors:", errors))} className="space-y-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="username" className="text-right">
               Tên đăng nhập
@@ -224,7 +223,7 @@ export function UserDialog({ open, onOpenChange, user, onSuccess }: UserDialogPr
             <div className="col-span-3">
               <Select
                 value={watch("roleCode")}
-                onValueChange={(value) => setValue("roleCode", value as "admin" | "user")}
+                onValueChange={(value) => setValue("roleCode", value as "admin" | "user", { shouldValidate: true })}
                 disabled={isSubmitting}
               >
                 <SelectTrigger>

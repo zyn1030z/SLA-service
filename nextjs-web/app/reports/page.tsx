@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/use-translation";
+import { AdminOnly } from "@/components/ProtectedRoute";
 import { FileText, Download, CheckCircle, AlertTriangle, TrendingUp, Eye, X } from "lucide-react";
 
 interface SLAReport {
@@ -35,7 +36,7 @@ interface UserRecord {
   remainingHours: number;
 }
 
-export default function SLAReportsPage() {
+function SLAReportsPage() {
   const { t } = useTranslation();
   const [reportData, setReportData] = useState<SLAReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -440,5 +441,13 @@ export default function SLAReportsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ReportsPage() {
+  return (
+    <AdminOnly>
+      <SLAReportsPage />
+    </AdminOnly>
   );
 }

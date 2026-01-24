@@ -26,19 +26,17 @@ export function middleware(request: NextRequest) {
   const accessToken = request.cookies.get('accessToken')?.value
   const refreshToken = request.cookies.get('refreshToken')?.value
 
-  // Temporarily commented out authentication checks to allow access without login
   // If accessing protected route without token, redirect to login
-  // if (!isPublicRoute && !accessToken) {
-  //   const loginUrl = new URL('/login', request.url)
-  //   loginUrl.searchParams.set('redirect', pathname)
-  //   return NextResponse.redirect(loginUrl)
-  // }
+  if (!isPublicRoute && !accessToken) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
 
   // If accessing login page with valid token, redirect to dashboard
-  // if (pathname === '/login' && accessToken) {
-  // // if (pathname === '/login') {
-  //   return NextResponse.redirect(new URL('/dashboard', request.url))
-  // }
+  if (pathname === '/login' && accessToken) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
 
   // For admin routes, we'll let the client-side check handle role validation
   // since we need user info from the API to determine roles

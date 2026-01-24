@@ -3,17 +3,19 @@ import { getApiUrl } from "@/lib/api/get-api-url";
 
 const API_BASE_URL = getApiUrl();
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const url = new URL(req.url);
-    const qs = url.searchParams.toString();
-    const target = `${API_BASE_URL}/sla/action-logs${qs ? `?${qs}` : ""}`;
-    console.log("hungpt", target);
+    const body = await req.json();
+    const target = `${API_BASE_URL}/auth/login`;
+
+    console.log("[Auth Login Proxy] Forwarding to:", target);
+
     const res = await fetch(target, {
-      cache: "no-store",
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -23,14 +25,14 @@ export async function GET(req: NextRequest) {
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (error) {
-    console.error("Failed to fetch SLA action logs:", error);
+    console.error("Failed to login:", error);
     return NextResponse.json(
       {
         success: false,
         error:
           error instanceof Error
             ? error.message
-            : "Failed to fetch SLA action logs",
+            : "Login failed",
       },
       { status: 502 }
     );

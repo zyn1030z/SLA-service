@@ -150,8 +150,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       authStore.setLoading(true);
       authStore.setError(null);
 
-      const response = await apiClient.post("/auth/login", credentials);
-      const { accessToken, refreshToken, user } = response.data;
+      // Call through Next.js API proxy instead of direct backend call
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(credentials),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Login failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const { accessToken, refreshToken, user } = data;
 
       if (!accessToken || !user) {
         throw new Error("Invalid response from server");
@@ -161,9 +174,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       authStore.login(user, accessToken, refreshToken);
 
       // Also store in cookies for middleware
-      document.cookie = `accessToken=${accessToken}; path=/; max-age=86400; secure; samesite=strict`;
-      document.cookie = `refreshToken=${refreshToken}; path=/; max-age=604800; secure; samesite=strict; httponly`;
+      // document.cookie = `accessToken=${accessToken}; path=/; max-age=86400; secure; samesite=strict`;
+      // document.cookie = `refreshToken=${refreshToken}; path=/; max-age=604800; secure; samesite=strict; httponly`;
+      // Thay thế dòng 176-178 bằng:
+      const isProduction = process.env.NODE_ENV === 'production';
+      const isHttps = window.location.protocol === 'https:';
+      const secureFlag = isProduction && isHttps ? '; secure' : '';
 
+      // Cho access token - có thể đọc từ client-side
+      document.cookie = `accessToken=${accessToken}; path=/; max-age=86400${secureFlag}; samesite=lax`;
+
+      // Cho refresh token - nên httponly để bảo mật hơn
+      document.cookie = `refreshToken=${refreshToken}; path=/; max-age=604800${secureFlag}; samesite=lax; httponly`;
       toast({
         title: "Đăng nhập thành công",
         description: `Chào mừng ${user.fullName}!`,
@@ -178,12 +200,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       let errorMessage = "Đăng nhập thất bại";
 
-      if (error.response?.status === 401) {
+      // Parse error from fetch response or API route
+      if (error.message?.includes("401")) {
         errorMessage = "Tên đăng nhập hoặc mật khẩu không đúng";
-      } else if (error.response?.status === 423) {
+      } else if (error.message?.includes("423")) {
         errorMessage = "Tài khoản đã bị khóa";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      } else if (error.message?.includes("Login failed")) {
+        errorMessage = "Tên đăng nhập hoặc mật khẩu không đúng";
       }
 
       authStore.setError(errorMessage);

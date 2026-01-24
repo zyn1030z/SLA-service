@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/loading-skeleton";
 import { formatDateTime } from "@/lib/utils/date";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useAuth } from "@/lib/auth-context";
 import {
   AlertTriangle,
   Clock,
@@ -76,6 +77,7 @@ type MetricType = "violations" | "active" | "completed" | "success" | null;
 
 export default function DashboardPage() {
   const { t } = useTranslation();
+  const { isAdmin } = useAuth();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [recentViolations, setRecentViolations] = useState<
@@ -799,24 +801,28 @@ export default function DashboardPage() {
                 {t("dashboard.viewAllRecords")}
               </Button>
             </Link>
-            <Link href="/workflows">
-              <Button className="w-full justify-start group" variant="outline">
-                <Activity className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
-                {t("dashboard.viewAllWorkflows")}
-              </Button>
-            </Link>
+            {isAdmin && (
+              <Link href="/workflows">
+                <Button className="w-full justify-start group" variant="outline">
+                  <Activity className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
+                  {t("dashboard.viewAllWorkflows")}
+                </Button>
+              </Link>
+            )}
             <Link href="/reports">
               <Button className="w-full justify-start group" variant="outline">
                 <BarChart3 className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
                 {t("dashboard.exportReports")}
               </Button>
             </Link>
-            <Link href="/sla-config">
-              <Button className="w-full justify-start group" variant="outline">
-                <Settings className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
-                {t("dashboard.configureSlaRules")}
-              </Button>
-            </Link>
+            {isAdmin && (
+              <Link href="/sla-config">
+                <Button className="w-full justify-start group" variant="outline">
+                  <Settings className="h-4 w-4 mr-3 group-hover:text-primary transition-colors" />
+                  {t("dashboard.configureSlaRules")}
+                </Button>
+              </Link>
+            )}
           </CardContent>
         </Card>
       </div>

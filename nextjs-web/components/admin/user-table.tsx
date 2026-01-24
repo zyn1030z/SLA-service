@@ -73,7 +73,7 @@ export function UserTable({ users, loading, onEdit, onLock, onDelete }: UserTabl
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
 
   // Filter users based on search and filters
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = (users || []).filter(user => {
     const matchesSearch = user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
