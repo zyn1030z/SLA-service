@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { UserDialog } from "@/components/admin/user-dialog";
 import { UserTable } from "@/components/admin/user-table";
 import { UserPlus } from "lucide-react";
-import { useAuthStore } from "@/store/auth.store";
 
 interface User {
   id: number;
@@ -25,20 +24,12 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const { accessToken } = useAuthStore();
 
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      // const res = await apiClient.get("/api/admin/users");
-      const res = await fetch("/api/admin/users", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(accessToken && { "Authorization": `Bearer ${accessToken}` }),
-        },
-      });
-      const data = await res.json();
+      const res = await apiClient.get("/admin/users");
+      const data = res.data;
       console.log('data==========', data);
       // Handle both array response and paginated response
       const usersArray = Array.isArray(data) ? data : (data.users || data.data || []);
@@ -67,9 +58,9 @@ export default function UsersPage() {
   const handleLock = async (user: User) => {
     try {
       if (user.isLocked) {
-        await apiClient.post(`/api/admin/users/${user.id}/unlock`);
+        await apiClient.post(`/admin/users/${user.id}/unlock`);
       } else {
-        await apiClient.post(`/api/admin/users/${user.id}/lock`);
+        await apiClient.post(`/admin/users/${user.id}/lock`);
       }
       fetchUsers();
     } catch (error) {
@@ -80,7 +71,7 @@ export default function UsersPage() {
   const handleDelete = async (user: User) => {
     if (confirm(`Are you sure you want to deactivate user ${user.username}?`)) {
       try {
-        await apiClient.delete(`/api/admin/users/${user.id}`);
+        await apiClient.delete(`/admin/users/${user.id}`);
         fetchUsers();
       } catch (error) {
         console.error("Delete failed", error);

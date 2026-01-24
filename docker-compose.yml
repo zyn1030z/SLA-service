@@ -11,7 +11,7 @@ services:
       TZ: 'UTC'  # System timezone
       PGTZ: 'UTC'  # PostgreSQL timezone
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "5434:5432"
     volumes:
       - sla_pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -78,9 +78,7 @@ services:
     volumes:
       - ./nextjs-web:/app
       - nextjs_web_node_modules:/app/node_modules
-    # command: sh -c "npm run debug"
     command: sh -c "npm run dev"
-    # command: ["npx", "next", "dev", "-p", "3001"]
 
 volumes:
   sla_pg_data:

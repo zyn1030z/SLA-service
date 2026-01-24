@@ -1,12 +1,21 @@
 import axios from 'axios';
 import { getApiUrl } from './get-api-url';
 
+// const apiClient = axios.create({
+//   // baseURL: getApiUrl(),
+//   baseURL: '/api', // Use relative URL for Next.js API routes
+//   headers: {
+//     'Content-Type': 'application/json',
+//   },
+// });
 const apiClient = axios.create({
-  baseURL: getApiUrl(),
+  // baseURL: getApiUrl(),
+  baseURL: '/api', // Use relative URL for Next.js API routes
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
 
 apiClient.interceptors.request.use(
   (config) => {
