@@ -9,10 +9,10 @@ import { getApiUrl } from './get-api-url';
 //   },
 // });
 const apiClient = axios.create({
-  // baseURL: getApiUrl(),
-  baseURL: '/api', // Use relative URL for Next.js API routes
+  baseURL: getApiUrl(), // Call backend API directly
+  // baseURL: "/api",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 

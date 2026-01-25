@@ -7,11 +7,11 @@ export async function GET(req: NextRequest) {
   try {
     // Forward auth headers from client
     const authHeader = req.headers.get('authorization');
-    
+
     const target = `${API_BASE_URL}/admin/users`;
     console.log("[Admin Users Proxy] Forwarding to:", target);
 
-    const res = await fetch(target, {
+    let response = await fetch(target, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -19,12 +19,26 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
+    // For 401/403 errors, return the error to client
+    // Client-side apiClient interceptor will handle token refresh
+    if (response.status === 401 || response.status === 403) {
+      const errorData = await response.json().catch(() => ({ error: 'Authentication failed' }));
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication expired. Please refresh and try again.',
+          originalError: errorData
+        },
+        { status: response.status }
+      );
     }
 
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
     console.error("Failed to fetch admin users:", error);
     return NextResponse.json(

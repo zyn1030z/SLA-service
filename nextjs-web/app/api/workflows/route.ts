@@ -21,12 +21,6 @@ export async function GET() {
     }
 
     const data = await response.json();
-    console.error(`[GET /api/workflows] Received ${Array.isArray(data) ? data.length : 'non-array'} items from backend`);
-    if (Array.isArray(data) && data.length > 0) {
-      console.error(`[GET /api/workflows] First item has activities: ${data[0].activities ? data[0].activities.length : 'none'}`);
-      console.error(`[GET /api/workflows] First workflow name: ${data[0].workflowName}`);
-    }
-    console.error(`[GET /api/workflows] Returning ${Array.isArray(data) ? data.length : 'non-array'} items to frontend`);
     return NextResponse.json(data, {
       headers: {
         "Cache-Control": "no-cache, no-store, must-revalidate",
