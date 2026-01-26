@@ -9,8 +9,8 @@ import { getApiUrl } from './get-api-url';
 //   },
 // });
 const apiClient = axios.create({
-  baseURL: getApiUrl(), // Call backend API directly
-  // baseURL: "/api",
+  baseURL: getApiUrl(), // Call backend API directly for production
+  // baseURL: "/api", // Use proxy for local development
   headers: {
     "Content-Type": "application/json",
   },

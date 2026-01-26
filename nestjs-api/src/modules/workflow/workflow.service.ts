@@ -732,6 +732,62 @@ export class WorkflowService {
     return this.activityRepository.save(activity);
   }
 
+  async createActivity(createActivityDto: {
+    workflowId: string;
+    stepName: string;
+    stepCode: string;
+    slaHours: number;
+    violationAction: "notify" | "auto_approve";
+    maxViolations: number;
+    order: number;
+  }): Promise<ActivityEntity> {
+    // Find the workflow to get the workflowId
+    const workflow = await this.workflowRepository.findOne({
+      where: { id: Number(createActivityDto.workflowId) },
+    });
+
+    if (!workflow) {
+      throw new Error('Workflow not found');
+    }
+
+    // Get max activity_id for this workflow to generate unique ID
+    const maxActivity = await this.activityRepository.findOne({
+      where: { workflowId: workflow.id },
+      order: { activityId: 'DESC' },
+    });
+
+    const nextActivityId = maxActivity ? maxActivity.activityId + 1 : 1;
+
+    // Create new activity with all required fields
+    const activity = this.activityRepository.create({
+      workflowId: workflow.id,
+      activityId: nextActivityId,
+      name: createActivityDto.stepName,
+      code: createActivityDto.stepCode,
+      kind: 'dummy', // Default kind for manual steps
+      splitMode: 'XOR', // Default split mode
+      joinMode: 'XOR', // Default join mode
+      flowStart: false,
+      flowStop: false,
+      flowCancel: false,
+      flowDone: false,
+      slaHours: createActivityDto.slaHours,
+      violationAction: createActivityDto.violationAction,
+      maxViolations: createActivityDto.maxViolations,
+      isActive: true,
+    });
+
+    const savedActivity = await this.activityRepository.save(activity);
+
+    // Update workflow steps count
+    const activitiesCount = await this.activityRepository.count({
+      where: { workflowId: workflow.id },
+    });
+    await this.workflowRepository.update(workflow.id, { steps: activitiesCount });
+
+    return savedActivity;
+  }
+
   async deleteActivity(activityId: string | number): Promise<boolean> {
     const activity = await this.activityRepository.findOne({
       where: { id: Number(activityId) },

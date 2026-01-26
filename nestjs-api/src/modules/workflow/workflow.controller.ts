@@ -125,6 +125,20 @@ export class WorkflowController {
   }
 
   @Public()
+  @Post("activity")
+  async createActivity(@Body() createActivityDto: {
+    workflowId: string;
+    stepName: string;
+    stepCode: string;
+    slaHours: number;
+    violationAction: "notify" | "auto_approve";
+    maxViolations: number;
+    order: number;
+  }) {
+    return this.workflowService.createActivity(createActivityDto);
+  }
+
+  @Public()
   @Delete("activity/:activityId")
   async deleteActivity(@Param("activityId") activityId: string) {
     const success = await this.workflowService.deleteActivity(activityId);

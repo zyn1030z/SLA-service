@@ -68,7 +68,7 @@ declare global {
 }
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
 
 const buildBackendUrl = (path: string) =>
   API_BASE_URL ? `${API_BASE_URL}${path}` : `/api${path}`;
@@ -196,6 +196,13 @@ export default function WorkflowDetailPage() {
   const [isLottieReady, setIsLottieReady] = useState(false);
   const [editingStep, setEditingStep] = useState<string | null>(null);
   const [showAddStep, setShowAddStep] = useState(false);
+  const [addStepForm, setAddStepForm] = useState({
+    stepName: "",
+    stepCode: "",
+    slaHours: 24,
+    violationAction: "notify" as "notify" | "auto_approve",
+    maxViolations: 3,
+  });
   const [editForm, setEditForm] = useState<Partial<WorkflowStep>>({});
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [apiConfigStep, setApiConfigStep] = useState<string | null>(null);
@@ -507,19 +514,83 @@ export default function WorkflowDetailPage() {
     }
   };
 
-  const handleAddStep = (newStep: Omit<WorkflowStep, "id">) => {
-    if (!workflow) return;
+  const handleAddStep = async () => {
+    if (!workflow || !addStepForm.stepName || !addStepForm.stepCode) {
+      alert("Vui lòng điền đầy đủ thông tin bước");
+      return;
+    }
+    console.log("addStepForm", addStepForm);
+    const url = '/api/workflows/activity'; // Call through Next.js proxy
+    console.log("Calling URL:", url);
 
-    const step: WorkflowStep = {
-      ...newStep,
-      id: Date.now().toString(),
-    };
+    const token = localStorage.getItem('accessToken');
 
-    setWorkflow({
-      ...workflow,
-      steps: [...workflow.steps, step].sort((a, b) => a.order - b.order),
-    });
-    setShowAddStep(false);
+    try {
+      // Call API through Next.js proxy
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { 'Authorization': `Bearer ${token}` }),
+        },
+        body: JSON.stringify({
+          workflowId: workflow.workflowId || workflow.id,
+          stepName: addStepForm.stepName,
+          stepCode: addStepForm.stepCode,
+          slaHours: addStepForm.slaHours,
+          violationAction: addStepForm.violationAction,
+          maxViolations: addStepForm.maxViolations,
+          order: workflow.steps.length + 1,
+        }),
+      });
+
+      if (response.ok) {
+        const newActivity = await response.json();
+        
+        // Add to local state
+        const newStep: WorkflowStep = {
+          id: newActivity.id || `activity-${newActivity.activityId}`,
+          stepCode: newActivity.code,
+          stepName: newActivity.name,
+          slaHours: newActivity.slaHours,
+          violationAction: newActivity.violationAction,
+          maxViolations: newActivity.maxViolations,
+          order: workflow.steps.length + 1,
+          isActive: newActivity.isActive,
+          originalActivity: {
+            activityId: newActivity.activityId,
+            kind: newActivity.kind,
+            splitMode: newActivity.splitMode,
+            joinMode: newActivity.joinMode,
+            flowStart: newActivity.flowStart,
+            flowStop: newActivity.flowStop,
+            flowCancel: newActivity.flowCancel,
+            flowDone: newActivity.flowDone,
+          },
+        };
+
+        setWorkflow({
+          ...workflow,
+          steps: [...workflow.steps, newStep],
+        });
+
+        // Reset form and close dialog
+        setAddStepForm({
+          stepName: "",
+          stepCode: "",
+          slaHours: 24,
+          violationAction: "notify",
+          maxViolations: 3,
+        });
+        setShowAddStep(false);
+      } else {
+        console.error("Failed to create activity:", response.statusText);
+        alert("Lỗi khi tạo bước mới. Vui lòng thử lại.");
+      }
+    } catch (error) {
+      console.error("Error creating activity:", error);
+      alert("Lỗi khi tạo bước mới. Vui lòng thử lại.");
+    }
   };
 
   const openApiConfig = (stepId: string, type: "notify" | "auto_approve") => {
@@ -1538,25 +1609,42 @@ export default function WorkflowDetailPage() {
                   <span className="text-sm font-medium">
                     {t("workflow.stepName")}
                   </span>
-                  <Input placeholder={t("workflow.stepNamePlaceholder")} />
+                  <Input 
+                    placeholder={t("workflow.stepNamePlaceholder")}
+                    value={addStepForm.stepName}
+                    onChange={(e) => setAddStepForm({...addStepForm, stepName: e.target.value})}
+                  />
                 </div>
                 <div>
                   <span className="text-sm font-medium">
                     {t("workflow.stepCode")}
                   </span>
-                  <Input placeholder={t("workflow.stepCodePlaceholder")} />
+                  <Input 
+                    placeholder={t("workflow.stepCodePlaceholder")}
+                    value={addStepForm.stepCode}
+                    onChange={(e) => setAddStepForm({...addStepForm, stepCode: e.target.value})}
+                  />
                 </div>
                 <div>
                   <span className="text-sm font-medium">
                     {t("workflow.slaHours")}
                   </span>
-                  <Input type="number" placeholder="24" />
+                  <Input 
+                    type="number" 
+                    placeholder="24"
+                    value={addStepForm.slaHours}
+                    onChange={(e) => setAddStepForm({...addStepForm, slaHours: Number(e.target.value)})}
+                  />
                 </div>
                 <div>
                   <span className="text-sm font-medium">
                     {t("workflow.violationAction")}
                   </span>
-                  <select className="w-full mt-1 p-2 border rounded">
+                  <select 
+                    className="w-full mt-1 p-2 border rounded"
+                    value={addStepForm.violationAction}
+                    onChange={(e) => setAddStepForm({...addStepForm, violationAction: e.target.value as "notify" | "auto_approve"})}
+                  >
                     <option value="notify">{t("workflow.notify")}</option>
                     <option value="auto_approve">
                       {t("workflow.autoApprove")}
@@ -1567,7 +1655,12 @@ export default function WorkflowDetailPage() {
                   <span className="text-sm font-medium">
                     {t("workflow.maxViolations")}
                   </span>
-                  <Input type="number" placeholder="3" />
+                  <Input 
+                    type="number" 
+                    placeholder="3"
+                    value={addStepForm.maxViolations}
+                    onChange={(e) => setAddStepForm({...addStepForm, maxViolations: Number(e.target.value)})}
+                  />
                 </div>
                 <div className="flex justify-end space-x-2">
                   <Button
@@ -1576,7 +1669,7 @@ export default function WorkflowDetailPage() {
                   >
                     {t("common.cancel")}
                   </Button>
-                  <Button onClick={() => setShowAddStep(false)}>
+                  <Button onClick={handleAddStep}>
                     <Save className="h-4 w-4 mr-2" />
                     {t("common.save")}
                   </Button>
