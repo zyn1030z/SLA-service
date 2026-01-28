@@ -4,41 +4,63 @@ import { Repository } from "typeorm";
 import { SystemEntity } from "../../entities/system.entity";
 import { WorkflowEntity } from "../../entities/workflow.entity";
 import { RecordEntity } from "../../entities/record.entity";
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsUrl } from "class-validator";
 // import { ApiProperty } from "@nestjs/swagger";
 
 export class CreateSystemDto {
   // @ApiProperty({ description: "System name" })
+  @IsString()
+  @IsNotEmpty()
   systemName!: string;
 
   // @ApiProperty({ description: "System description", required: false })
+  @IsOptional()
+  @IsString()
   description?: string;
 
   // @ApiProperty({ description: "Base URL", required: false })
+  @IsOptional()
+  @IsString()
+  @IsUrl()
   baseUrl?: string;
 
   // @ApiProperty({ description: "API Key", required: false })
+  @IsOptional()
+  @IsString()
   apiKey?: string;
 
   // @ApiProperty({ description: "System enabled", required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
   enabled?: boolean;
 
   // @ApiProperty({ description: "System color", required: false, default: "#3B82F6" })
+  @IsOptional()
+  @IsString()
   color?: string;
 
   // @ApiProperty({ description: "System icon", required: false, default: "🏢" })
+  @IsOptional()
+  @IsString()
   icon?: string;
 
   // API Configuration fields
   // @ApiProperty({ description: "Workflow endpoint", required: false })
+  @IsOptional()
+  @IsString()
   workflowEndpoint?: string;
 
   // @ApiProperty({ description: "API method", required: false, default: "POST" })
+  @IsOptional()
+  @IsString()
   apiMethod?: string;
 
   // @ApiProperty({ description: "API headers", required: false })
+  @IsOptional()
   apiHeaders?: Record<string, any>;
 
   // @ApiProperty({ description: "API request body", required: false })
+  @IsOptional()
   apiRequestBody?: Record<string, any>;
 }
 
@@ -131,12 +153,25 @@ export class SystemService {
   }
 
   async create(createSystemDto: CreateSystemDto): Promise<SystemEntity> {
+    // Validate and clean systemName
+    if (!createSystemDto.systemName || createSystemDto.systemName.trim() === '') {
+      throw new Error('System name is required and cannot be empty');
+    }
+    
+    // Clean the systemName (remove extra whitespace, handle encoding)
+    const cleanedSystemName = createSystemDto.systemName.trim();
+    
     // Frontend có thể gửi 'name' thay vì 'systemName' -> map lại để tránh NOT NULL violation
-    const payload: any = { ...createSystemDto };
+    const payload: any = { 
+      ...createSystemDto,
+      systemName: cleanedSystemName 
+    };
+    
     if (!payload.systemName && payload.name) {
-      payload.systemName = payload.name;
+      payload.systemName = payload.name.trim();
       delete payload.name;
     }
+    
     const system = this.systemRepository.create(
       payload as Partial<SystemEntity>
     ) as SystemEntity;
@@ -156,13 +191,13 @@ export class SystemService {
     if (updateSystemDto.name !== undefined) {
       system.systemName = updateSystemDto.name;
     }
-    if (updateSystemDto.baseUrl !== undefined) {
+    if (updateSystemDto.baseUrl !== undefined && updateSystemDto.baseUrl !== null) {
       system.baseUrl = updateSystemDto.baseUrl;
     }
-    if (updateSystemDto.description !== undefined) {
+    if (updateSystemDto.description !== undefined && updateSystemDto.description !== null) {
       system.description = updateSystemDto.description;
     }
-    if (updateSystemDto.apiKey !== undefined) {
+    if (updateSystemDto.apiKey !== undefined && updateSystemDto.apiKey !== null) {
       system.apiKey = updateSystemDto.apiKey;
     }
     if (updateSystemDto.enabled !== undefined) {

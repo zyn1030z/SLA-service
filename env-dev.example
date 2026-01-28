@@ -1,0 +1,31 @@
+# Development Environment Configuration
+# Copy this file to .env.dev and update values as needed
+
+# Database Configuration
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=sla_dev
+POSTGRES_PORT=5433
+
+# Application Ports (different from production to avoid conflicts)
+API_PORT=3000
+WEB_PORT=3001
+
+# JWT Configuration
+NEST_JWT_SECRET=dev_jwt_secret_here_change_in_production
+HMAC_SHARED_SECRET=dev_hmac_secret_here_change_in_production
+
+# Odoo Integration (dev/staging)
+ODOO_BASE_URL=https://dev-odoo-instance.com
+
+# NextJS Configuration (Development)
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:3000
+
+# Development Settings
+NODE_ENV=development
+DOCKER_RUNTIME=dev
+
+# Debug Settings
+DEBUG_MODE=true
+LOG_LEVEL=debug

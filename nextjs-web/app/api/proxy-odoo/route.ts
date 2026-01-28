@@ -3,8 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(request: NextRequest) {
   try {
     // Breakpoint 1: Start of function 
-    debugger; // Set breakpoint here in VS Code
-
     const body = await request.json();
 
     // Kiểm tra Odoo server có chạy không

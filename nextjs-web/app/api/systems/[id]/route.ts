@@ -11,12 +11,31 @@ export async function PUT(
     const body = await request.json();
     const { id } = params;
 
+    // Map frontend fields to backend fields
+    const backendPayload: any = {
+      ...body,
+    };
+
+    // Map 'name' to 'systemName' if present
+    if (body.name !== undefined) {
+      backendPayload.name = body.name;
+      // Don't send systemName if only name is provided
+    }
+
+    // Map apiConfig fields to flat structure if present
+    if (body.apiConfig) {
+      backendPayload.workflowEndpoint = body.apiConfig.workflowEndpoint;
+      backendPayload.apiMethod = body.apiConfig.method;
+      backendPayload.apiHeaders = body.apiConfig.headers;
+      backendPayload.apiRequestBody = body.apiConfig.requestBody;
+    }
+
     const response = await fetch(`${API_BASE_URL}/systems/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(backendPayload),
     });
 
     if (!response.ok) {

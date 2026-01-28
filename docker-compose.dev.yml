@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sla_postgres_dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sla}
+    ports:
+      - "5434:5432"
+    volumes:
+      - sla_pg_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sla}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sla_network_dev
+
+  nestjs-api:
+    build: ./nestjs-api
+    container_name: sla_nestjs_dev
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_HOST: postgres  # Thêm POSTGRES_HOST để phù hợp với data-source.ts
+      TYPEORM_HOST: postgres
+      TYPEORM_PORT: 5432
+      TYPEORM_USERNAME: postgres
+      TYPEORM_PASSWORD: postgres
+      TYPEORM_DATABASE: sla
+      API_PORT: 3000
+      WEB_PORT: 3001
+      NEST_JWT_SECRET: your_jwt_secret_here
+      HMAC_SHARED_SECRET: your_hmac_secret_here
+      DOCKER_RUNTIME: dev  # Đổi lại thành dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+      - "9229:9229" # Debug port
+    volumes:
+      - ./nestjs-api:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run migration:run && npm run start:dev"
+    networks:
+      - sla_network_dev
+
+  nextjs-web:
+    build: ./nextjs-web
+    container_name: sla_nextjs_dev
+    env_file:
+      - ./.env
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:${API_PORT:-3000}
+      - DOCKER_RUNTIME=dev
+    depends_on:
+      - nestjs-api
+    ports:
+      - "${WEB_PORT:-3001}:3001"
+      - "9231:9231" # Debug port for Next.js
+    volumes:
+      - ./nextjs-web:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev"
+    networks:
+      - sla_network_dev
+
+volumes:
+  sla_pg_dev_data:
+
+networks:
+  sla_network_dev:
+    driver: bridge

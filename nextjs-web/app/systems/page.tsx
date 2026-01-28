@@ -420,6 +420,8 @@ export default function SystemsPage() {
     }
 
     try {
+      console.log("🔍 editForm before save:", editForm);
+      console.log("🔍 editingSystem:", editingSystem);
       await updateSystem(editingSystem, { ...editForm });
       // Reload systems from API to get updated data
       await loadSystems();

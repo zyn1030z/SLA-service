@@ -6,6 +6,7 @@ import {
   Put,
   Delete,
   Param,
+  ValidationPipe,
 } from "@nestjs/common";
 import { Public } from "../auth/public.decorator";
 import {
@@ -32,7 +33,14 @@ export class SystemController {
 
   @Public()
   @Post()
-  async createSystem(@Body() createSystemDto: CreateSystemDto) {
+  async createSystem(
+    @Body(new ValidationPipe({ 
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true 
+    })) 
+    createSystemDto: CreateSystemDto
+  ) {
     return this.systemService.create(createSystemDto);
   }
 

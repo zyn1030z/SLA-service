@@ -23,14 +23,16 @@ services:
   nestjs-api:
     build: ./nestjs-api
     container_name: sla_nestjs
+    env_file:
+      - ./.env
     environment:
       # TYPEORM_HOST: 10.32.35.27
       # TYPEORM_PORT: 5433
-      TYPEORM_HOST: postgres
-      TYPEORM_PORT: 5432
-      TYPEORM_USERNAME: postgres
-      TYPEORM_PASSWORD: postgres
-      TYPEORM_DATABASE: sla
+      # TYPEORM_HOST: postgres
+      # TYPEORM_PORT: 5432
+      # TYPEORM_USERNAME: postgres
+      # TYPEORM_PASSWORD: postgres
+      # TYPEORM_DATABASE: sla
       API_PORT: 3000
       WEB_PORT: 3001
       NEST_JWT_SECRET: your_jwt_secret_here
@@ -71,7 +73,6 @@ services:
   #     - nestjs-api
   #   environment:
   #     - API_URL=http://nestjs-api:3000
-  #     # - NODE_OPTIONS=--inspect=0.0.0.0:9231
   #   ports:
   #     - "${WEB_PORT}:3001"
   #     - "9231:9231" # Debug port (host:container) - NextJS uses 9231 in container
